@@ -85,7 +85,7 @@ impl DoorbellInfo {
             .header("Cache", "yes")
             .header("Firebase", "no")
             .send(body.as_bytes())
-            .context("couldn't reach the doorbell server")?;
+            .context("Couldn't reach the doorbell relay. Is this device online?")?;
         Ok(())
     }
 

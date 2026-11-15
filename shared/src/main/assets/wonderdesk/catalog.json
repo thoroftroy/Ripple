@@ -419,6 +419,45 @@
       "keywords": [
         "download"
       ]
+    },
+    {
+      "id": "ripple",
+      "name": "Ripple",
+      "generic": "Terminal",
+      "aliases": [
+        "terminal",
+        "ssh",
+        "remote terminal",
+        "command line",
+        "shell",
+        "console"
+      ],
+      "keywords": [
+        "term",
+        "ssh",
+        "shell",
+        "cli",
+        "remote"
+      ]
+    },
+    {
+      "id": "echo",
+      "name": "Echo",
+      "generic": "Voice Recorder",
+      "aliases": [
+        "recorder",
+        "voice recorder",
+        "audio editor",
+        "sound recorder",
+        "podcast"
+      ],
+      "keywords": [
+        "record",
+        "audio",
+        "voice",
+        "mic",
+        "podcast"
+      ]
     }
   ]
 }

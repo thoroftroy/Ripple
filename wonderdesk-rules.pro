@@ -13,3 +13,6 @@
 -keep class com.hierynomus.** { *; }
 -keep class net.engio.** { *; }
 -keepattributes RuntimeVisibleAnnotations
+
+# Ripple: terminal libraries call into native code by name.
+-keep class com.termux.** { *; }

@@ -1,0 +1,4 @@
+Ripple includes the terminal-emulator and terminal-view libraries from Terminal Emulator for Android
+(https://github.com/jackpal/Android-Terminal-Emulator), as maintained in Termux
+(https://github.com/termux/termux-app). They are licensed under the Apache License, Version 2.0
+(https://www.apache.org/licenses/LICENSE-2.0). Ripple's copy adds a remote transport to TerminalSession.

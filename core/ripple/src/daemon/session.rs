@@ -171,7 +171,12 @@ impl Session {
                 });
                 match r {
                     Ok(Ok(0)) => break,
-                    Ok(Ok(n)) => s2.on_output(&buf[..n]),
+                    Ok(Ok(n)) => {
+                        let answers = s2.on_output(&buf[..n]);
+                        if !answers.is_empty() {
+                            let _ = s2.write(&answers).await;
+                        }
+                    }
                     Ok(Err(e)) if e.kind() == std::io::ErrorKind::Interrupted => continue,
                     Ok(Err(_)) => break, // EIO: the program and everything on the terminal exited
                     Err(_would_block) => continue,
@@ -183,8 +188,11 @@ impl Session {
         Ok(sess)
     }
 
-    fn on_output(&self, data: &[u8]) {
+    /// Handles program output; returns answers to terminal queries when nobody is attached to
+    /// answer them (programs such as fish wait for an answer before showing a prompt).
+    fn on_output(&self, data: &[u8]) -> Vec<u8> {
         let mut attention: Vec<String> = vec![];
+        let answers = if self.tx.receiver_count() == 0 { self.answer_queries(data) } else { vec![] };
         {
             let mut inner = self.inner.lock().unwrap();
             inner.parser.process(data);
@@ -218,6 +226,40 @@ impl Session {
         for text in attention {
             let _ = self.events.send(json!({"event": "attention", "session": self.id, "name": self.display_name(), "text": text, "kind": "bell"}));
         }
+        answers
+    }
+
+    /// Replies a terminal would give to the common queries, like tmux does for detached sessions.
+    fn answer_queries(&self, data: &[u8]) -> Vec<u8> {
+        let mut out = Vec::new();
+        let has = |pat: &[u8]| data.windows(pat.len()).any(|w| w == pat);
+        // Primary device attributes: a VT220-class terminal with colour.
+        if has(b"\x1b[c") || has(b"\x1b[0c") {
+            out.extend_from_slice(b"\x1b[?62;22c");
+        }
+        // Secondary device attributes.
+        if has(b"\x1b[>c") || has(b"\x1b[>0c") {
+            out.extend_from_slice(b"\x1b[>1;10;0c");
+        }
+        // Status report and cursor position.
+        if has(b"\x1b[5n") {
+            out.extend_from_slice(b"\x1b[0n");
+        }
+        if has(b"\x1b[6n") {
+            let (r, c) = {
+                let inner = self.inner.lock().unwrap();
+                inner.parser.screen().cursor_position()
+            };
+            out.extend_from_slice(format!("\x1b[{};{}R", r + 1, c + 1).as_bytes());
+        }
+        // Background / foreground colour queries (answer with a light terminal's colours).
+        if has(b"\x1b]11;?") {
+            out.extend_from_slice(b"\x1b]11;rgb:ffff/ffff/ffff\x1b\\");
+        }
+        if has(b"\x1b]10;?") {
+            out.extend_from_slice(b"\x1b]10;rgb:1c1c/1c1c/1c1c\x1b\\");
+        }
+        out
     }
 
     /// Called every few seconds: reports a session that was busy for a while and has gone quiet
@@ -334,7 +376,18 @@ impl Session {
     /// Name of the program in the foreground (e.g. "btop"), and its working directory.
     pub fn foreground(&self) -> (String, String) {
         let pgrp = unsafe { libc::tcgetpgrp(self.master.get_ref().as_raw_fd()) };
-        let pid = if pgrp > 0 { pgrp } else { self.pid };
+        let mut pid = if pgrp > 0 { pgrp } else { self.pid };
+        // `fish -c prog` (no job control) keeps prog in the shell's process group, so step down
+        // from a shell to its newest child to name the program that is really running.
+        for _ in 0..4 {
+            let comm = std::fs::read_to_string(format!("/proc/{pid}/comm")).unwrap_or_default();
+            if !matches!(comm.trim(), "fish" | "bash" | "zsh" | "sh" | "dash" | "mksh" | "ksh" | "tcsh" | "nu") { break; }
+            let kids = std::fs::read_to_string(format!("/proc/{pid}/task/{pid}/children")).unwrap_or_default();
+            match kids.split_whitespace().filter_map(|k| k.parse::<i32>().ok()).last() {
+                Some(child) => pid = child,
+                None => break,
+            }
+        }
         let comm = std::fs::read_to_string(format!("/proc/{pid}/comm")).map(|s| s.trim().to_string()).unwrap_or_default();
         let cwd = std::fs::read_link(format!("/proc/{pid}/cwd"))
             .or_else(|_| std::fs::read_link(format!("/proc/{}/cwd", self.pid)))

@@ -121,6 +121,11 @@ pub async fn connect(id: &Identity, info: &ComputerInfo, extra: &[String], mut s
             }
         }
     }
+    // Testing aid: behave as if no direct path exists, so only the doorbell's answer is used.
+    let force_bell = std::env::var_os("RIPPLE_FORCE_DOORBELL").is_some();
+    if force_bell {
+        addrs.clear();
+    }
     if !addrs.is_empty() {
         status(format!("Connecting to {}…", info.name));
         match race(&ep, &cfg, addrs.clone(), None, Duration::from_secs(4)).await {
