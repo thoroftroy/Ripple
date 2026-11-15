@@ -192,7 +192,7 @@ fun RemoteScreen(fp: String, startSession: Int, open: (Screen) -> Unit) {
     LaunchedEffect(fp) { link.start(); Store.setLastComputer(context, fp) }
     val state by link.state.collectAsState()
     val sessions by link.sessions.collectAsState()
-    var current by rememberSaveable(fp) { mutableIntStateOf(startSession) }
+    var current by rememberSaveable(fp) { mutableIntStateOf(if (startSession >= 0) startSession else Store.lastSession(context, fp)) }
     var termView by remember { mutableStateOf<TerminalView?>(null) }
     val client = remember { ScreenClient(context) { termView } }
     val mods = remember { Modifiers() }
@@ -205,7 +205,8 @@ fun RemoteScreen(fp: String, startSession: Int, open: (Screen) -> Unit) {
 
     // Pick a session: the one asked for, else the most recent.
     LaunchedEffect(sessions) {
-        if (sessions.isNotEmpty() && sessions.none { it.id == current }) current = sessions.last().id
+        // The one you were on is gone: go to the session used most recently (least idle), not simply the newest.
+        if (sessions.isNotEmpty() && sessions.none { it.id == current }) current = sessions.minByOrNull { it.idleSecs }!!.id
         if (sessions.isEmpty() && state is LinkState.Connected) current = -1
     }
     val info = sessions.firstOrNull { it.id == current }
@@ -214,6 +215,7 @@ fun RemoteScreen(fp: String, startSession: Int, open: (Screen) -> Unit) {
     }
     DisposableEffect(current) {
         MainActivity.visibleSession = fp to current
+        if (current >= 0) Store.setLastSession(context, fp, current)
         onDispose { }
     }
     // Put the keyboard away when leaving the terminal.

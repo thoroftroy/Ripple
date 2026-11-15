@@ -368,6 +368,11 @@ where
                 return Ok(());
             }
         },
+        // Only a request with no id at all starts a session; a bad id (negative, text) must never create one.
+        None if !req["id"].is_null() => {
+            proto::write_json(&mut w, &err("That session has ended")).await?;
+            return Ok(());
+        }
         None => match d.new_session(str_opt(&req, "name"), str_opt(&req, "cwd"), str_opt(&req, "command"), cols, rows) {
             Ok(s) => s,
             Err(e) => {

@@ -55,6 +55,9 @@ object Store {
     fun setAlerts(c: Context, v: Boolean) = prefs(c).edit().putBoolean("alerts", v).apply()
     fun lastComputer(c: Context) = prefs(c).getString("last_computer", null)
     fun setLastComputer(c: Context, fp: String?) = prefs(c).edit().putString("last_computer", fp).apply()
+    /** The tab last on screen for each computer, so reopening Ripple resumes it instead of jumping to another. */
+    fun lastSession(c: Context, fp: String) = prefs(c).getInt("last_session_$fp", -1)
+    fun setLastSession(c: Context, fp: String, id: Int) = prefs(c).edit().putInt("last_session_$fp", id).apply()
 
     fun quickCommands(c: Context): List<QuickCommand> {
         val raw = prefs(c).getString("quick", "[]") ?: "[]"

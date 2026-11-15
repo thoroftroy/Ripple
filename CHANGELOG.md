@@ -1,5 +1,12 @@
 # Ripple changelog
 
+## v0.1.2
+
+- Opening Ripple on the phone goes back to the tab you were using on that computer, instead of jumping to the newest one
+- A session can never be started by accident: a phone or window asking for a session that's gone now gets told so, instead of a new session being opened
+- On the computer, the first Ripple window you open shows all your running sessions (even ones the phone is attached to) instead of starting another one
+- `ripple <command> --help` shows the help instead of running "--help" in a new session
+
 ## v0.1.1
 
 - New Aqua Glass colours: a deep navy terminal that turns milky blue over your wallpaper (see-through at 88% on Linux with a compositor). It's the new default for the Aqua look instead of plain white; the old white one is still there as Paper

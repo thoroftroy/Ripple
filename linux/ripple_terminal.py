@@ -436,7 +436,10 @@ class Window(Gtk.ApplicationWindow):
         self.apply_look()
         self.sessions = sessions
         detached = [s for s in sessions if s.get("receivers", 0) == 0]
-        for s in detached:
+        # The first Ripple window on this computer shows every running session, even ones your phone is
+        # attached to, so opening the window resumes your work instead of starting yet another session.
+        # Extra windows only pick up sessions nobody is looking at (and start a fresh one otherwise).
+        for s in (sessions if not other_windows_open() else detached):
             self.open_tab(s["id"], s["name"])
         if not self.tabs:
             self.new_tab()
@@ -938,6 +941,25 @@ class Window(Gtk.ApplicationWindow):
         save_settings(self.settings)
         # Sessions keep running in the background; reopen Ripple or use the phone to get back to them.
         return False
+
+
+def other_windows_open():
+    """True when another Ripple Terminal window is already running for this user."""
+    try:
+        me = os.getpid()
+        for pid in os.listdir("/proc"):
+            if not pid.isdigit() or int(pid) == me:
+                continue
+            try:
+                with open("/proc/%s/cmdline" % pid, "rb") as f:
+                    cmd = f.read().split(b"\0")
+                if os.stat("/proc/" + pid).st_uid == os.getuid() and any(a.endswith(b"ripple_terminal.py") for a in cmd):
+                    return True
+            except OSError:
+                continue
+    except OSError:
+        pass
+    return False
 
 
 class App(Gtk.Application):

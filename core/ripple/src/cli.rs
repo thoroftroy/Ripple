@@ -47,6 +47,13 @@ pub fn main() -> i32 {
 async fn run(args: Vec<String>) -> Result<i32> {
     let cmd = args.first().map(|s| s.as_str()).unwrap_or("");
     let rest: Vec<String> = args.iter().skip(1).cloned().collect();
+    // `ripple <command> --help` shows the help; it must never run "--help" as a program in a new session.
+    // (`ripple new -- prog --help` still passes --help on to prog.)
+    let before_dashdash = rest.iter().take_while(|a| a.as_str() != "--");
+    if cmd != "remote" && before_dashdash.into_iter().any(|a| a == "--help" || a == "-h") {
+        println!("{HELP}");
+        return Ok(0);
+    }
     match cmd {
         "" => attach_cmd(vec!["--new".into()]).await,
         "attach" | "a" => attach_cmd(rest).await,
