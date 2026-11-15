@@ -47,6 +47,7 @@ object Schemes {
     data class Scheme(val label: String, val bg: String, val fg: String, val cursor: String, val palette: List<String>)
 
     val all = linkedMapOf(
+        "glass" to Scheme("Aqua Glass", "#0e1a33", "#d8e4f7", "#5ac8fa", listOf("#3a4a66", "#ff6b62", "#30d158", "#ffd60a", "#0a84ff", "#bf5af2", "#5ac8fa", "#d8e4f7", "#6e7fa3", "#ff8a80", "#7ee787", "#ffe45e", "#5ac8fa", "#da8fff", "#70d7ff", "#ffffff")),
         "paper" to Scheme("Paper", "#ffffff", "#1c1c1c", "#1e7fe8", listOf("#000000", "#c23621", "#25bc24", "#adad27", "#2a5fdd", "#d338d3", "#33bbc8", "#cbcccd", "#818383", "#fc391f", "#31e722", "#c5b81c", "#3b6cff", "#f935f8", "#14c5d4", "#e9ebeb")),
         "midnight" to Scheme("Midnight", "#1e1f24", "#e8e8ea", "#6ea8ff", listOf("#1e1f24", "#ff6b61", "#5bc777", "#f2b33d", "#6ea8ff", "#c792ea", "#5ad4e6", "#d5dae0", "#6b7078", "#ff8a80", "#7ee09a", "#ffd479", "#94c1ff", "#ddb3ff", "#8ae7f2", "#ffffff")),
         "phosphor" to Scheme("Phosphor", "#000000", "#28fe14", "#28fe14", listOf("#000000", "#990000", "#00a600", "#999900", "#0000b2", "#b200b2", "#00a6b2", "#bfbfbf", "#666666", "#e50000", "#00d900", "#e5e500", "#0000ff", "#e500e5", "#00e5e5", "#e5e5e5")),
@@ -57,12 +58,12 @@ object Schemes {
     )
 
     fun forLook(look: WonderLook) = when (look) {
-        WonderLook.AQUA -> "paper"; WonderLook.BLISS -> "bliss"; WonderLook.DARK -> "midnight"; WonderLook.SUPER -> "neon"
+        WonderLook.AQUA -> "glass"; WonderLook.BLISS -> "bliss"; WonderLook.DARK -> "midnight"; WonderLook.SUPER -> "neon"
     }
 
     fun resolve(c: Context, look: WonderLook): Scheme {
         val key = Store.scheme(c).let { if (it == "auto") forLook(look) else it }
-        return all[key] ?: all.getValue("paper")
+        return all[key] ?: all.getValue("glass")
     }
 
     private var applied: Scheme? = null

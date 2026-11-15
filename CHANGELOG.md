@@ -1,5 +1,10 @@
 # Ripple changelog
 
+## v0.1.1
+
+- New Aqua Glass colours: a deep navy terminal that turns milky blue over your wallpaper (see-through at 88% on Linux with a compositor). It's the new default for the Aqua look instead of plain white; the old white one is still there as Paper
+- Fixed: `wd apps` and `wd device` in the Android command line could close straight away
+
 ## v0.1.0
 
 - First release: your computer's terminal on your phone. Sessions live on the computer and keep running when the phone disconnects; reopen and the screen is redrawn exactly as it was

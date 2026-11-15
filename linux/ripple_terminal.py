@@ -96,7 +96,7 @@ def request(obj, timeout=10):
 
 
 # ------------------------------------------------------------------ settings
-DEFAULTS = {"font": "Monospace 11", "scheme": "auto", "opacity": 1.0, "scrollback": 10000, "close_ends_session": True, "width": 1000, "height": 640, "bell": True}
+DEFAULTS = {"font": "Monospace 11", "scheme": "auto", "opacity": 0.88, "scrollback": 10000, "close_ends_session": True, "width": 1000, "height": 640, "bell": True}
 
 
 def load_settings():
@@ -115,6 +115,7 @@ def save_settings(s):
 
 # Terminal colour schemes: (background, foreground, cursor, 16-colour palette)
 SCHEMES = {
+    "glass": ("#0e1a33", "#d8e4f7", "#5ac8fa", ["#3a4a66", "#ff6b62", "#30d158", "#ffd60a", "#0a84ff", "#bf5af2", "#5ac8fa", "#d8e4f7", "#6e7fa3", "#ff8a80", "#7ee787", "#ffe45e", "#5ac8fa", "#da8fff", "#70d7ff", "#ffffff"]),
     "paper": ("#ffffff", "#1c1c1c", "#1e7fe8", ["#000000", "#c23621", "#25bc24", "#adad27", "#2a5fdd", "#d338d3", "#33bbc8", "#cbcccd", "#818383", "#fc391f", "#31e722", "#c5b81c", "#3b6cff", "#f935f8", "#14c5d4", "#e9ebeb"]),
     "midnight": ("#1e1f24", "#e8e8ea", "#6ea8ff", ["#1e1f24", "#ff6b61", "#5bc777", "#f2b33d", "#6ea8ff", "#c792ea", "#5ad4e6", "#d5dae0", "#6b7078", "#ff8a80", "#7ee09a", "#ffd479", "#94c1ff", "#ddb3ff", "#8ae7f2", "#ffffff"]),
     "phosphor": ("#000000", "#28fe14", "#28fe14", ["#000000", "#990000", "#00a600", "#999900", "#0000b2", "#b200b2", "#00a6b2", "#bfbfbf", "#666666", "#e50000", "#00d900", "#e5e500", "#0000ff", "#e500e5", "#00e5e5", "#e5e5e5"]),
@@ -123,8 +124,8 @@ SCHEMES = {
     "neon": ("#0d0a1a", "#f2ecff", "#00f0ff", ["#0d0a1a", "#ff4f7b", "#3cffa8", "#ffce68", "#00b3ff", "#ff2e9a", "#00f0ff", "#d8ccff", "#5b3fa8", "#ff7d9c", "#7dffc4", "#ffe09c", "#4dd0ff", "#ff6ec0", "#7df9ff", "#ffffff"]),
     "bliss": ("#fefefe", "#000000", "#0058e6", ["#000000", "#c1311f", "#3c9c3c", "#d08a00", "#0058e6", "#8f3fb0", "#1b8fae", "#ece9d8", "#7f9db9", "#e2483a", "#52c152", "#f2a900", "#3c82ff", "#b45fd6", "#3db3d6", "#ffffff"]),
 }
-LOOK_SCHEME = {"AQUA": "paper", "BLISS": "bliss", "DARK": "midnight", "SUPER": "neon"}
-SCHEME_LABELS = [("auto", "Match the look"), ("paper", "Paper"), ("midnight", "Midnight"), ("phosphor", "Phosphor"), ("ocean", "Ocean"), ("parchment", "Parchment"), ("neon", "Neon"), ("bliss", "Bliss")]
+LOOK_SCHEME = {"AQUA": "glass", "BLISS": "bliss", "DARK": "midnight", "SUPER": "neon"}
+SCHEME_LABELS = [("auto", "Match the look"), ("glass", "Aqua Glass"), ("paper", "Paper"), ("midnight", "Midnight"), ("phosphor", "Phosphor"), ("ocean", "Ocean"), ("parchment", "Parchment"), ("neon", "Neon"), ("bliss", "Bliss")]
 
 
 def rgba(hexstr, alpha=1.0):
@@ -269,8 +270,8 @@ class Tab:
         self.term.set_font(Pango.FontDescription.from_string(s["font"]))
         scheme = s["scheme"]
         if scheme == "auto":
-            scheme = LOOK_SCHEME.get(self.win.look, "paper")
-        bg, fg, cur, pal = SCHEMES.get(scheme, SCHEMES["paper"])
+            scheme = LOOK_SCHEME.get(self.win.look, "glass")
+        bg, fg, cur, pal = SCHEMES.get(scheme, SCHEMES["glass"])
         self.term.set_colors(rgba(fg), rgba(bg, s.get("opacity", 1.0)), [rgba(c) for c in pal])
         self.term.set_color_cursor(rgba(cur))
         self.term.set_color_cursor_foreground(rgba(bg))
