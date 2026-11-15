@@ -36,6 +36,10 @@ pub struct Config {
     pub shared_dir: String,
     /// Check GitHub for new versions of the Linux app.
     pub auto_update: bool,
+    /// Wonderdesk look (AQUA, BLISS, DARK, SUPER); phones send theirs so the desktop matches.
+    pub look: String,
+    /// Follow the look of the phone that connects.
+    pub follow_phone_look: bool,
 }
 
 impl Default for Config {
@@ -52,6 +56,8 @@ impl Default for Config {
             notify_quiet_secs: 20,
             shared_dir: format!("{home}/Ripple"),
             auto_update: true,
+            look: "AQUA".into(),
+            follow_phone_look: true,
         }
     }
 }
@@ -117,6 +123,8 @@ pub struct Daemon {
     pub endpoint: Mutex<Option<quinn::Endpoint>>,
     pub doorbell_state: Mutex<(bool, String)>,
     pub seen_nonces: Mutex<Vec<String>>,
+    /// Environment from the desktop session (DISPLAY, SSH_AUTH_SOCK…) for new sessions.
+    pub session_env: Mutex<Vec<(String, String)>>,
 }
 
 impl Daemon {
@@ -142,6 +150,7 @@ impl Daemon {
             endpoint: Mutex::new(None),
             doorbell_state: Mutex::new((false, String::new())),
             seen_nonces: Mutex::new(vec![]),
+            session_env: Mutex::new(vec![]),
         });
         d.save_config()?;
         Ok(d)
@@ -201,7 +210,8 @@ impl Daemon {
             None => format!("Terminal {id}"),
         };
         let name = name.filter(|n| !n.trim().is_empty()).unwrap_or(default_name);
-        let sess = Session::spawn(id, Spawn { name, cwd, command, shell, cols, rows }, self.events.clone())?;
+        let env = self.session_env.lock().unwrap().clone();
+        let sess = Session::spawn(id, Spawn { name, cwd, command, shell, cols, rows, env }, self.events.clone())?;
         self.sessions.lock().unwrap().insert(id, sess.clone());
         // Remove the session when its program exits.
         let me = self.clone();
@@ -270,6 +280,30 @@ pub async fn run() -> Result<()> {
             let list: Vec<Arc<Session>> = me.sessions.lock().unwrap().values().cloned().collect();
             for s in list {
                 s.check_quiet(secs);
+            }
+        }
+    });
+    // Updates: check GitHub every few hours; when a new binary is installed, restart into it as
+    // soon as no sessions are running (the service manager starts it again).
+    let me = d.clone();
+    tokio::spawn(async move {
+        let exe = std::env::current_exe().ok();
+        let stamp = |p: &Option<PathBuf>| p.as_ref().and_then(|p| std::fs::metadata(p).ok()).and_then(|m| m.modified().ok());
+        let started = stamp(&exe);
+        let mut next_check = tokio::time::Instant::now() + std::time::Duration::from_secs(10 * 60);
+        loop {
+            tokio::time::sleep(std::time::Duration::from_secs(60)).await;
+            if me.cfg.read().unwrap().auto_update && tokio::time::Instant::now() >= next_check {
+                next_check = tokio::time::Instant::now() + std::time::Duration::from_secs(6 * 3600);
+                if let Some(e) = &exe {
+                    let _ = tokio::process::Command::new(e).arg("update").stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).status().await;
+                }
+            }
+            let replaced = stamp(&exe) != started;
+            if replaced && me.sessions.lock().unwrap().is_empty() {
+                eprintln!("ripple: restarting into the updated version");
+                let _ = std::fs::remove_file(socket_path());
+                std::process::exit(0);
             }
         }
     });

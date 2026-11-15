@@ -79,6 +79,7 @@ pub struct Spawn {
     pub shell: String,
     pub cols: u16,
     pub rows: u16,
+    pub env: Vec<(String, String)>,
 }
 
 impl Session {
@@ -96,6 +97,9 @@ impl Session {
             None => {
                 cmd.arg0(format!("-{shell_name}"));
             }
+        }
+        for (k, v) in &s.env {
+            cmd.env(k, v);
         }
         cmd.current_dir(&cwd)
             .env("TERM", "xterm-256color")

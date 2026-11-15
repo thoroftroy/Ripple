@@ -88,7 +88,7 @@ where
         proto::write_json(&mut w, &err("This phone isn't paired with this computer (or was forgotten). Pair again.")).await?;
         return Ok(());
     }
-    let local_only = ["pair_code", "pair_answer", "devices", "forget", "config", "set_config", "offer", "notify"];
+    let local_only = ["pair_code", "pair_answer", "devices", "forget", "config", "set_config", "offer", "notify", "set_env"];
     if !peer.local && local_only.contains(&op.as_str()) {
         proto::write_json(&mut w, &err("Only allowed on the computer itself")).await?;
         return Ok(());
@@ -96,6 +96,33 @@ where
     let reply: Value = match op.as_str() {
         "hello" | "info" => json!({"computer": d.info(), "sessions": d.list_sessions(), "doorbell": doorbell_status(&d)}),
         "sessions" => json!({"sessions": d.list_sessions()}),
+        "set_env" => {
+            const KEEP: [&str; 10] = ["DISPLAY", "WAYLAND_DISPLAY", "XAUTHORITY", "DBUS_SESSION_BUS_ADDRESS", "SSH_AUTH_SOCK", "GPG_AGENT_INFO", "XDG_SESSION_TYPE", "XDG_CURRENT_DESKTOP", "LANG", "PATH"];
+            let mut env = vec![];
+            if let Some(m) = req["env"].as_object() {
+                for (k, v) in m {
+                    if KEEP.contains(&k.as_str()) {
+                        if let Some(v) = v.as_str() {
+                            env.push((k.clone(), v.to_string()));
+                        }
+                    }
+                }
+            }
+            *d.session_env.lock().unwrap() = env;
+            json!({"ok": true})
+        }
+        "set_look" => {
+            let look = req["look"].as_str().unwrap_or("AQUA").to_uppercase();
+            let follow = d.cfg.read().unwrap().follow_phone_look;
+            if peer.local || follow {
+                if ["AQUA", "BLISS", "DARK", "SUPER"].contains(&look.as_str()) {
+                    d.cfg.write().unwrap().look = look.clone();
+                    let _ = d.save_config();
+                    let _ = d.events.send(json!({"event": "look", "look": look}));
+                }
+            }
+            json!({"ok": true, "look": d.cfg.read().unwrap().look.clone()})
+        }
         "new" => {
             let cols = req["cols"].as_u64().unwrap_or(80) as u16;
             let rows = req["rows"].as_u64().unwrap_or(24) as u16;
@@ -225,6 +252,9 @@ fn set_config(d: &Arc<Daemon>, req: &Value) -> Value {
         }
         if let Some(v) = req["auto_update"].as_bool() {
             c.auto_update = v;
+        }
+        if let Some(v) = req["follow_phone_look"].as_bool() {
+            c.follow_phone_look = v;
         }
         if let Some(v) = req["extra_addresses"].as_array() {
             c.extra_addresses = v.iter().filter_map(|x| x.as_str().map(String::from)).filter(|s| !s.trim().is_empty()).collect();
