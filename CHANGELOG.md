@@ -1,5 +1,11 @@
 # Ripple changelog
 
+## v0.1.3
+
+- File provider now honours the columns each caller asks for, so Wayfinder lists paired computers and browses their files instead of coming back empty
+- New sessions start at the home folder again — the current folder and recents are still one tap away as chips
+- Drag anywhere in the terminal to move the cursor, trackpad-style: sideways for left/right, up/down for history or lines. Taps, long-press selection and pinch zoom work as before
+
 ## v0.1.2
 
 - Opening Ripple on the phone goes back to the tab you were using on that computer, instead of jumping to the newest one

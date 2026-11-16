@@ -49,19 +49,34 @@ class ComputerFilesProvider : DocumentsProvider() {
         val dir = e.optBoolean("dir")
         var flags = Document.FLAG_SUPPORTS_DELETE or Document.FLAG_SUPPORTS_RENAME
         flags = flags or if (dir) Document.FLAG_DIR_SUPPORTS_CREATE else Document.FLAG_SUPPORTS_WRITE
-        c.newRow().add(Document.COLUMN_DOCUMENT_ID, "$fp|$path").add(Document.COLUMN_DISPLAY_NAME, name)
-            .add(Document.COLUMN_MIME_TYPE, mime(name, dir)).add(Document.COLUMN_SIZE, if (dir) null else e.optLong("size"))
-            .add(Document.COLUMN_LAST_MODIFIED, e.optLong("mtime")).add(Document.COLUMN_FLAGS, flags)
+        // Only the columns the caller asked for (see queryRoots): a subset projection would crash otherwise.
+        val vals = mapOf<String, Any?>(
+            Document.COLUMN_DOCUMENT_ID to "$fp|$path",
+            Document.COLUMN_DISPLAY_NAME to name,
+            Document.COLUMN_MIME_TYPE to mime(name, dir),
+            Document.COLUMN_SIZE to if (dir) null else e.optLong("size"),
+            Document.COLUMN_LAST_MODIFIED to e.optLong("mtime"),
+            Document.COLUMN_FLAGS to flags,
+        )
+        c.newRow().let { r -> c.columnNames.forEach { r.add(vals[it]) } }
     }
 
     override fun queryRoots(projection: Array<out String>?): Cursor {
         ready()
         val c = MatrixCursor(projection ?: rootCols)
         Store.computers(context!!).forEach { comp ->
-            c.newRow().add(Root.COLUMN_ROOT_ID, comp.fp).add(Root.COLUMN_DOCUMENT_ID, "${comp.fp}|${comp.home.ifBlank { "/" }}")
-                .add(Root.COLUMN_TITLE, comp.name).add(Root.COLUMN_SUMMARY, "Ripple · ${comp.user.ifBlank { "computer" }}")
-                .add(Root.COLUMN_FLAGS, Root.FLAG_SUPPORTS_CREATE or Root.FLAG_SUPPORTS_IS_CHILD)
-                .add(Root.COLUMN_ICON, R.drawable.ic_stat_ripple).add(Root.COLUMN_MIME_TYPES, "*/*")
+            // Only the columns the caller asked for: stuffing every value in crashes callers
+            // that request a subset (MatrixCursor has exactly the requested columns).
+            val vals = mapOf<String, Any?>(
+                Root.COLUMN_ROOT_ID to comp.fp,
+                Root.COLUMN_DOCUMENT_ID to "${comp.fp}|${comp.home.ifBlank { "/" }}",
+                Root.COLUMN_TITLE to comp.name,
+                Root.COLUMN_SUMMARY to "Ripple · ${comp.user.ifBlank { "computer" }}",
+                Root.COLUMN_FLAGS to (Root.FLAG_SUPPORTS_CREATE or Root.FLAG_SUPPORTS_IS_CHILD),
+                Root.COLUMN_ICON to R.drawable.ic_stat_ripple,
+                Root.COLUMN_MIME_TYPES to "*/*",
+            )
+            c.newRow().let { r -> c.columnNames.forEach { r.add(vals[it]) } }
         }
         return c
     }

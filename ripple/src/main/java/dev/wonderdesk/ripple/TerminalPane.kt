@@ -30,6 +30,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import kotlin.math.abs
 import com.termux.terminal.TerminalColors
 import com.termux.terminal.TerminalSession
 import com.termux.terminal.TerminalSessionClient
@@ -163,6 +164,30 @@ fun TerminalPane(
                         override fun logStackTraceWithMessage(tag: String?, message: String?, e: Exception?) {}
                         override fun logStackTrace(tag: String?, e: Exception?) {}
                     })
+                    // Drag anywhere to move the cursor, trackpad-style: sideways drags send
+                    // left/right, up/down drags send up/down. The listener only observes:
+                    // taps, long-press selection and pinch zoom still go to the terminal untouched.
+                    var trackX = 0f; var trackY = 0f; var tracking = false
+                    val touchDensity = ctx.resources.displayMetrics.density
+                    val startSlop = 20 * touchDensity
+                    val keyStep = 14 * touchDensity
+                    setOnTouchListener { _, e ->
+                        when (e.actionMasked) {
+                            MotionEvent.ACTION_DOWN -> { trackX = e.x; trackY = e.y; tracking = false }
+                            MotionEvent.ACTION_POINTER_DOWN, MotionEvent.ACTION_POINTER_UP -> tracking = false
+                            MotionEvent.ACTION_MOVE -> if (e.pointerCount == 1) {
+                                if (!tracking && (abs(e.x - trackX) > startSlop || abs(e.y - trackY) > startSlop)) tracking = true
+                                if (tracking) {
+                                    while (e.x - trackX > keyStep) { handleKeyCode(KeyEvent.KEYCODE_DPAD_RIGHT, 0); trackX += keyStep }
+                                    while (trackX - e.x > keyStep) { handleKeyCode(KeyEvent.KEYCODE_DPAD_LEFT, 0); trackX -= keyStep }
+                                    while (e.y - trackY > keyStep) { handleKeyCode(KeyEvent.KEYCODE_DPAD_DOWN, 0); trackY += keyStep }
+                                    while (trackY - e.y > keyStep) { handleKeyCode(KeyEvent.KEYCODE_DPAD_UP, 0); trackY -= keyStep }
+                                }
+                            } else tracking = false
+                            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> tracking = false
+                        }
+                        false
+                    }
                     onViewReady(this)
                 }
             },

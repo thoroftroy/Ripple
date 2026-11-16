@@ -381,7 +381,8 @@ private fun Modifier.combinedClickableCompat(onClick: () -> Unit) = this.combine
 fun NewSessionDialog(link: Link, currentCwd: String?, onDismiss: () -> Unit, onStarted: (Int) -> Unit) {
     val context = LocalContext.current
     val recents = remember { Store.recentFolders(context, link.computer.fp) }
-    var folder by remember { mutableStateOf(currentCwd ?: recents.firstOrNull() ?: link.computer.home) }
+    // New sessions start at home; the current folder and recents are one tap away as chips.
+    var folder by remember { mutableStateOf(link.computer.home) }
     var command by remember { mutableStateOf("") }
     var name by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
