@@ -55,6 +55,10 @@ fun RippleSettings() {
         PanelDivider()
         SwitchRow("Extra keys row", keys, { keys = it; Store.setExtraKeys(context, it) }, subtitle = "Esc, Tab, Ctrl, Alt, arrows and more above the keyboard", icon = WonderIcons.Tune)
         PanelDivider()
+        var suggestions by remember { mutableStateOf(Store.keyboardSuggestions(context)) }
+        SwitchRow("Keyboard suggestions", suggestions, { suggestions = it; Store.setKeyboardSuggestions(context, it) },
+            subtitle = if (suggestions) "Autocorrect is on — great for prose, risky for commands" else "No fixing while you type, so commands stay exactly as typed", icon = WonderIcons.Edit)
+        PanelDivider()
         SwitchRow("Vibrate on key press", vibrate, { vibrate = it; Store.setVibrateKeys(context, it) }, icon = WonderIcons.TouchApp)
         PanelDivider()
         SwitchRow("Keep the screen on", screenOn, { screenOn = it; Store.setKeepScreenOn(context, it) }, subtitle = "While a terminal is open", icon = WonderIcons.WbSunny)

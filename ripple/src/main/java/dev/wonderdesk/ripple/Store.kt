@@ -49,6 +49,9 @@ object Store {
     fun setKeepScreenOn(c: Context, v: Boolean) = prefs(c).edit().putBoolean("keep_screen_on", v).apply()
     fun vibrateKeys(c: Context) = prefs(c).getBoolean("vibrate_keys", true)
     fun setVibrateKeys(c: Context, v: Boolean) = prefs(c).edit().putBoolean("vibrate_keys", v).apply()
+    /** Keyboard suggestions and autocorrect in the terminal. Off by default: a "fixed" command runs the wrong thing. */
+    fun keyboardSuggestions(c: Context) = prefs(c).getBoolean("keyboard_suggestions", false)
+    fun setKeyboardSuggestions(c: Context, v: Boolean) = prefs(c).edit().putBoolean("keyboard_suggestions", v).apply()
     fun extraKeys(c: Context) = prefs(c).getBoolean("extra_keys", true)
     fun setExtraKeys(c: Context, v: Boolean) = prefs(c).edit().putBoolean("extra_keys", v).apply()
     fun alerts(c: Context) = prefs(c).getBoolean("alerts", true)

@@ -272,6 +272,16 @@ public final class TerminalView extends View {
     }
 
     /**
+     * Whether the soft keyboard may show suggestions and autocorrect.
+     * Off by default: autocorrect rewrites commands. Turn it on for prose.
+     * Takes effect the next time the keyboard opens its input connection.
+     */
+    private boolean mShowKeyboardSuggestions;
+    public void setShowKeyboardSuggestions(boolean show) {
+        mShowKeyboardSuggestions = show;
+    }
+
+    /**
      * Sets whether terminal view key logging is enabled or not.
      *
      * @param value The boolean value that defines the state.
@@ -313,6 +323,11 @@ public final class TerminalView extends View {
         // and the alternate view was the one selected the last time.
         if (mClient.isTerminalViewSelected()) {
             if (mClient.shouldEnforceCharBasedInput()) {
+                if (mShowKeyboardSuggestions) {
+                    // Plain text with suggestions and autocorrect, for people who type prose
+                    // more than commands. Off by default: a "fixed" command runs the wrong thing.
+                    outAttrs.inputType = InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_NORMAL;
+                } else {
                 // Some keyboards seems do not reset the internal state on TYPE_NULL.
                 // Affects mostly Samsung stock keyboards.
                 // https://github.com/termux/termux-app/issues/686
@@ -321,6 +336,7 @@ public final class TerminalView extends View {
                 // W/InputAttributes: Unexpected input class: inputType=0x00080090 imeOptions=0x02000000
                 // https://cs.android.com/android/platform/superproject/+/android-11.0.0_r40:packages/inputmethods/LatinIME/java/src/com/android/inputmethod/latin/InputAttributes.java;l=79
                 outAttrs.inputType = InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS;
+                }
             } else {
                 // Using InputType.NULL is the most correct input type and avoids issues with other hacks.
                 //

@@ -1,5 +1,9 @@
 # Ripple changelog
 
+## v0.1.6
+
+- New Terminal setting: keyboard suggestions (autocorrect). Off by default so commands stay exactly as typed; turn it on for prose
+
 ## v0.1.5
 
 - Terminal typing: keys typed while offline for over a minute are dropped on reconnect instead of firing stale commands you can no longer see or delete, with a notice

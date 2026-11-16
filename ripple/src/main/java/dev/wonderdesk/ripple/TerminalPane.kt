@@ -111,6 +111,7 @@ fun TerminalPane(
                     isFocusable = true
                     isFocusableInTouchMode = true
                     setTextSize(fontPx)
+                    setShowKeyboardSuggestions(Store.keyboardSuggestions(ctx))
                     setTypeface(Typeface.MONOSPACE)
                     keepScreenOn = Store.keepScreenOn(ctx)
                     val view = this
@@ -193,6 +194,7 @@ fun TerminalPane(
                 }
             },
             update = { v ->
+                v.setShowKeyboardSuggestions(Store.keyboardSuggestions(context))
                 if (session != null && v.currentSession !== session) {
                     v.attachSession(session)
                     Schemes.apply(scheme, listOf(session))
