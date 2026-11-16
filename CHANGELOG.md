@@ -1,5 +1,10 @@
 # Ripple changelog
 
+## v0.1.4
+
+- New machine link for Wonderdesk apps: Wayfinder lists paired computers and browses their files by itself, no picker scavenger hunt. It's guarded by a signature permission so only our apps get in
+- File provider now honours the columns each caller asks for instead of crashing on subsets
+
 ## v0.1.3
 
 - File provider now honours the columns each caller asks for, so Wayfinder lists paired computers and browses their files instead of coming back empty
