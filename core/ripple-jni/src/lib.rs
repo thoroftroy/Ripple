@@ -410,6 +410,9 @@ pub extern "system" fn Java_dev_wonderdesk_ripple_net_Native_download<'l>(mut en
                         callback(e, cb_ref, &format!("progress:{got}/{size}"));
                     }
                 }
+                Frame::Json(v) if v.get("error").is_some() => {
+                    anyhow::bail!("{}", v["error"].as_str().unwrap_or("Couldn't open the file"));
+                }
                 Frame::Json(v) if v["done"] == true => break,
                 _ => {}
             }

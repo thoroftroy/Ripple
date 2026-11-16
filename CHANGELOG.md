@@ -1,5 +1,9 @@
 # Ripple changelog
 
+## v0.1.7
+
+- Downloads no longer fail silently: if the computer can't open a file you now get its real reason instead of a blank viewer
+
 ## v0.1.6
 
 - New Terminal setting: keyboard suggestions (autocorrect). Off by default so commands stay exactly as typed; turn it on for prose

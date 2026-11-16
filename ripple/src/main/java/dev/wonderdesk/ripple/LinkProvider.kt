@@ -109,11 +109,13 @@ class LinkProvider : ContentProvider() {
         val ctx = context!!
         val h = handle(f)
         if (mode == "r") {
+            val st = request(f, JSONObject().put("op", "stat").put("path", path))
+            st.optString("error").takeIf { it.isNotEmpty() }?.let { throw FileNotFoundException(it) }
+            if (st.optJSONObject("entry")?.optBoolean("dir") == true) throw FileNotFoundException("That's a folder")
             val (r, w) = ParcelFileDescriptor.createPipe()
             Thread({
                 try {
                     Native.download(h, w.fd, path) { }
-                } catch (_: Exception) {
                 } finally {
                     runCatching { w.close() }
                 }
