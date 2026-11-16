@@ -1,5 +1,9 @@
 # Ripple changelog
 
+## v0.1.8
+
+- Wayfinder file opens download to a real file first instead of a pipe, so video players (which must seek) and picky image viewers actually play and show instead of going blank
+
 ## v0.1.7
 
 - Downloads no longer fail silently: if the computer can't open a file you now get its real reason instead of a blank viewer

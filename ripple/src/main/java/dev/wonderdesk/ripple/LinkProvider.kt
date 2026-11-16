@@ -112,15 +112,15 @@ class LinkProvider : ContentProvider() {
             val st = request(f, JSONObject().put("op", "stat").put("path", path))
             st.optString("error").takeIf { it.isNotEmpty() }?.let { throw FileNotFoundException(it) }
             if (st.optJSONObject("entry")?.optBoolean("dir") == true) throw FileNotFoundException("That's a folder")
-            val (r, w) = ParcelFileDescriptor.createPipe()
-            Thread({
-                try {
-                    Native.download(h, w.fd, path) { }
-                } finally {
-                    runCatching { w.close() }
-                }
-            }, "ripple-link-get").apply { isDaemon = true; start() }
-            return r
+            // Download straight to a real file, not a pipe: viewers need to seek (video indexes
+            // live at the end of the file), and any failure throws here with the computer's reason
+            // instead of opening blank.
+            val dir = File(ctx.cacheDir, "link-read").apply { mkdirs() }
+            val tmp = File(dir, "${f.hashCode()}-${path.hashCode()}-${path.substringAfterLast('/').take(64)}")
+            ParcelFileDescriptor.open(tmp, ParcelFileDescriptor.MODE_CREATE or ParcelFileDescriptor.MODE_TRUNCATE or ParcelFileDescriptor.MODE_WRITE_ONLY).use { pfd ->
+                Native.download(h, pfd.fd, path) { }
+            }
+            return ParcelFileDescriptor.open(tmp, ParcelFileDescriptor.MODE_READ_ONLY)
         }
         // Writing: collect into a local file, then send it when the app closes it.
         val dir = File(ctx.cacheDir, "link-write").apply { mkdirs() }
