@@ -164,9 +164,9 @@ fun TerminalPane(
                         override fun logStackTraceWithMessage(tag: String?, message: String?, e: Exception?) {}
                         override fun logStackTrace(tag: String?, e: Exception?) {}
                     })
-                    // Drag anywhere to move the cursor, trackpad-style: sideways drags send
-                    // left/right, up/down drags send up/down. The listener only observes:
-                    // taps, long-press selection and pinch zoom still go to the terminal untouched.
+                    // Drag sideways to move the cursor, trackpad-style. Vertical swipes are left
+                    // alone so they scroll the transcript instead of spraying arrow keys.
+                    // Taps, long-press selection and pinch zoom still go to the terminal untouched.
                     var trackX = 0f; var trackY = 0f; var tracking = false
                     val touchDensity = ctx.resources.displayMetrics.density
                     val startSlop = 20 * touchDensity
@@ -174,17 +174,18 @@ fun TerminalPane(
                     setOnTouchListener { _, e ->
                         when (e.actionMasked) {
                             MotionEvent.ACTION_DOWN -> { trackX = e.x; trackY = e.y; tracking = false }
-                            MotionEvent.ACTION_POINTER_DOWN, MotionEvent.ACTION_POINTER_UP -> tracking = false
+                            MotionEvent.ACTION_POINTER_DOWN, MotionEvent.ACTION_POINTER_UP, MotionEvent.ACTION_CANCEL -> tracking = false
                             MotionEvent.ACTION_MOVE -> if (e.pointerCount == 1) {
-                                if (!tracking && (abs(e.x - trackX) > startSlop || abs(e.y - trackY) > startSlop)) tracking = true
+                                if (!tracking && abs(e.x - trackX) > startSlop && abs(e.x - trackX) > 2 * abs(e.y - trackY)) tracking = true
                                 if (tracking) {
-                                    while (e.x - trackX > keyStep) { handleKeyCode(KeyEvent.KEYCODE_DPAD_RIGHT, 0); trackX += keyStep }
-                                    while (trackX - e.x > keyStep) { handleKeyCode(KeyEvent.KEYCODE_DPAD_LEFT, 0); trackX -= keyStep }
-                                    while (e.y - trackY > keyStep) { handleKeyCode(KeyEvent.KEYCODE_DPAD_DOWN, 0); trackY += keyStep }
-                                    while (trackY - e.y > keyStep) { handleKeyCode(KeyEvent.KEYCODE_DPAD_UP, 0); trackY -= keyStep }
+                                    if (abs(e.y - trackY) > startSlop * 1.5f) tracking = false
+                                    else {
+                                        while (e.x - trackX > keyStep) { handleKeyCode(KeyEvent.KEYCODE_DPAD_RIGHT, 0); trackX += keyStep }
+                                        while (trackX - e.x > keyStep) { handleKeyCode(KeyEvent.KEYCODE_DPAD_LEFT, 0); trackX -= keyStep }
+                                    }
                                 }
                             } else tracking = false
-                            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> tracking = false
+                            MotionEvent.ACTION_UP -> tracking = false
                         }
                         false
                     }

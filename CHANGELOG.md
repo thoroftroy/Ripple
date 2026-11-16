@@ -1,5 +1,11 @@
 # Ripple changelog
 
+## v0.1.5
+
+- Terminal typing: keys typed while offline for over a minute are dropped on reconnect instead of firing stale commands you can no longer see or delete, with a notice
+- Cursor drag is sideways-only now, so scrolling the transcript with a vertical swipe no longer sprays arrow keys and fights the scroll
+- The paired-computers list now includes each computer's shared Ripple folder path, so Wayfinder can open straight into it
+
 ## v0.1.4
 
 - New machine link for Wonderdesk apps: Wayfinder lists paired computers and browses their files by itself, no picker scavenger hunt. It's guarded by a signature permission so only our apps get in

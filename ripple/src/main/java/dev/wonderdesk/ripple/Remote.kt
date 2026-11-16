@@ -244,12 +244,20 @@ class RemoteTerminal(val link: Link, val sessionId: Int, var name: String, val c
     var onState: (() -> Unit)? = null
     /** Keys typed while the connection is coming back; sent as soon as it is. */
     private val pending = java.io.ByteArrayOutputStream()
+    /** When the current batch of unsent keys started piling up (0 when empty). */
+    private var pendingSince = 0L
+    /** Unsent typing older than this is dropped on reconnect: it belongs to a dead moment,
+     *  and firing it would run stale commands the user can no longer see or delete. */
+    private val pendingMaxAge = 60_000L
 
     val session: TerminalSession = TerminalSession(object : TerminalSession.RemoteTransport {
         override fun send(data: ByteArray, offset: Int, count: Int) {
             val s = stream.get()
             if (s != 0L && Native.writeData(s, data, offset, count)) return
-            if (!isEnded) synchronized(pending) { if (pending.size() < 64 * 1024) pending.write(data, offset, count) }
+            if (!isEnded) synchronized(pending) {
+                if (pending.size() == 0) pendingSince = System.currentTimeMillis()
+                if (pending.size() < 64 * 1024) pending.write(data, offset, count)
+            }
         }
         override fun resize(columns: Int, rows: Int) {
             cols = columns; this@RemoteTerminal.rows = rows
@@ -270,8 +278,14 @@ class RemoteTerminal(val link: Link, val sessionId: Int, var name: String, val c
             }
             stream.set(s)
             connected = true
-            val queued = synchronized(pending) { pending.toByteArray().also { pending.reset() } }
-            if (queued.isNotEmpty()) Native.writeData(s, queued, 0, queued.size)
+            val (queued, stale) = synchronized(pending) {
+                val q = pending.toByteArray().also { pending.reset() }
+                val since = pendingSince; pendingSince = 0L
+                q to (q.isNotEmpty() && System.currentTimeMillis() - since > pendingMaxAge)
+            }
+            if (stale) Ripple.main.post {
+                android.widget.Toast.makeText(Ripple.app, "Connection was down a while — dropped unsent typing", android.widget.Toast.LENGTH_LONG).show()
+            } else if (queued.isNotEmpty()) Native.writeData(s, queued, 0, queued.size)
             Ripple.main.post { onState?.invoke() }
             while (true) {
                 val f = Native.read(s) ?: break

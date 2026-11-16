@@ -60,13 +60,14 @@ class LinkProvider : ContentProvider() {
         ready()
         return when (MATCHER.match(uri)) {
             COMPUTERS -> {
-                val c = MatrixCursor(projection ?: arrayOf("fp", "name", "summary", "home"))
+                val c = MatrixCursor(projection ?: arrayOf("fp", "name", "summary", "home", "shared"))
                 Store.computers(context!!).forEach { comp ->
                     val vals = mapOf<String, Any?>(
                         "fp" to comp.fp,
                         "name" to comp.name.ifBlank { "Computer" },
                         "summary" to "Ripple · ${comp.user.ifBlank { "computer" }}",
                         "home" to comp.home,
+                        "shared" to comp.sharedDir,
                     )
                     c.newRow().let { r -> c.columnNames.forEach { r.add(vals[it]) } }
                 }
