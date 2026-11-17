@@ -84,9 +84,13 @@ pub fn transport() -> Arc<quinn::TransportConfig> {
     t.keep_alive_interval(Some(Duration::from_secs(12)));
     t.max_idle_timeout(Some(Duration::from_secs(40).try_into().unwrap()));
     t.max_concurrent_bidi_streams(256u32.into());
-    t.stream_receive_window((4u32 * 1024 * 1024).into());
-    t.receive_window((16u32 * 1024 * 1024).into());
-    t.send_window(16 * 1024 * 1024);
+    t.stream_receive_window((8u32 * 1024 * 1024).into());
+    t.receive_window((32u32 * 1024 * 1024).into());
+    t.send_window(32 * 1024 * 1024);
+    // Start fast instead of crawling up from a tiny window: file transfers are the busiest thing on the link.
+    let mut cubic = quinn::congestion::CubicConfig::default();
+    cubic.initial_window(1_000_000);
+    t.congestion_controller_factory(Arc::new(cubic));
     Arc::new(t)
 }
 

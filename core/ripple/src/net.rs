@@ -81,6 +81,10 @@ pub fn dual_stack_udp(port: u16) -> Result<UdpSocket> {
     let sock = Socket::new(Domain::IPV6, Type::DGRAM, Some(Protocol::UDP));
     if let Ok(s) = sock {
         let _ = s.set_only_v6(false);
+        // Big socket buffers: the default (about 200 KB) overflows when a fast file transfer bursts, and every dropped
+        // packet makes QUIC slow down. The system trims these to what it allows.
+        let _ = s.set_recv_buffer_size(8 * 1024 * 1024);
+        let _ = s.set_send_buffer_size(4 * 1024 * 1024);
         let addr: SocketAddr = SocketAddr::new(IpAddr::V6(Ipv6Addr::UNSPECIFIED), port);
         if s.bind(&addr.into()).is_ok() {
             return Ok(s.into());

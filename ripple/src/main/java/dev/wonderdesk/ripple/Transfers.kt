@@ -79,7 +79,10 @@ object Transfers {
             val uri = c.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values) ?: throw RuntimeException("Couldn't create the file")
             val prog = Progress(size)
             c.contentResolver.openFileDescriptor(uri, "w")!!.use { pfd ->
-                Native.download(h, pfd.fd, path) { s ->
+                if (size > 16L * 1024 * 1024) {
+                    // Several streams at once fill the link much sooner than one.
+                    java.io.FileOutputStream(pfd.fileDescriptor).channel.let { ch -> Ranges.parallelDownload(c, fp, path, size, ch) { got -> progressNote(c, id, "Saving $name", prog.text(got), prog.percent(got)) }; ch.force(false) }
+                } else Native.download(h, pfd.fd, path) { s ->
                     if (s.startsWith("progress:")) {
                         val got = s.removePrefix("progress:").substringBefore('/').toLongOrNull() ?: 0
                         progressNote(c, id, "Saving $name", prog.text(got), prog.percent(got))
@@ -148,22 +151,47 @@ object Transfers {
         }
     }
 
-    /** Downloads into the app cache (for opening and sharing). */
+    /**
+     * Downloads into the app cache (for opening and sharing). A file already fetched, and unchanged on the computer, is
+     * reused instead of downloaded again; big files come down over several streams at once.
+     */
     fun downloadToCache(c: Context, fp: String, path: String, onProgress: (String, Int) -> Unit): java.io.File {
         val h = handle(c, fp)
         val name = path.substringAfterLast('/')
-        val dir = java.io.File(c.cacheDir, "open/" + (path.hashCode() and 0x7fffffff)).apply { mkdirs() }
+        val entry = runCatching { JSONObject(Native.request(h, JSONObject().put("op", "stat").put("path", path).toString())).optJSONObject("entry") }.getOrNull()
+        val size = entry?.optLong("size") ?: 0L
+        val stamp = entry?.optLong("mtime") ?: 0L
+        val root = java.io.File(c.cacheDir, "open").apply { mkdirs() }
+        val key = (path.hashCode() and 0x7fffffff).toString()
+        val dir = java.io.File(root, "$key-$size-$stamp")
         val f = java.io.File(dir, name)
-        val size = runCatching { JSONObject(Native.request(h, JSONObject().put("op", "stat").put("path", path).toString())).optJSONObject("entry")?.optLong("size") ?: 0L }.getOrDefault(0L)
+        if (size > 0 && f.isFile && f.length() == size) { f.setLastModified(System.currentTimeMillis()); return f }
+        // Older copies of this file, and the oldest of the rest when the cache grows past 1 GB.
+        root.listFiles()?.filter { it.name.startsWith("$key-") }?.forEach { it.deleteRecursively() }
+        trimCache(root, 1L shl 30)
+        dir.mkdirs()
         val prog = Progress(size)
-        android.os.ParcelFileDescriptor.open(f, android.os.ParcelFileDescriptor.MODE_CREATE or android.os.ParcelFileDescriptor.MODE_TRUNCATE or android.os.ParcelFileDescriptor.MODE_WRITE_ONLY).use { pfd ->
-            Native.download(h, pfd.fd, path) { s ->
-                if (s.startsWith("progress:")) {
-                    val got = s.removePrefix("progress:").substringBefore('/').toLongOrNull() ?: 0
-                    onProgress(prog.text(got), prog.percent(got))
+        val part = java.io.File(dir, "$name.part")
+        if (size > 16L * 1024 * 1024) {
+            java.io.RandomAccessFile(part, "rw").use { raf -> raf.setLength(size)
+                Ranges.parallelDownload(c, fp, path, size, raf.channel) { got -> onProgress(prog.text(got), prog.percent(got)) } }
+        } else {
+            android.os.ParcelFileDescriptor.open(part, android.os.ParcelFileDescriptor.MODE_CREATE or android.os.ParcelFileDescriptor.MODE_TRUNCATE or android.os.ParcelFileDescriptor.MODE_WRITE_ONLY).use { pfd ->
+                Native.download(h, pfd.fd, path) { s ->
+                    if (s.startsWith("progress:")) {
+                        val got = s.removePrefix("progress:").substringBefore('/').toLongOrNull() ?: 0
+                        onProgress(prog.text(got), prog.percent(got))
+                    }
                 }
             }
         }
+        part.renameTo(f)
         return f
+    }
+
+    private fun trimCache(root: java.io.File, limit: Long) {
+        val dirs = root.listFiles()?.sortedBy { it.lastModified() } ?: return
+        var total = dirs.sumOf { d -> d.walkTopDown().filter { it.isFile }.sumOf { it.length() } }
+        for (d in dirs) { if (total <= limit) break; val n = d.walkTopDown().filter { it.isFile }.sumOf { it.length() }; d.deleteRecursively(); total -= n }
     }
 }

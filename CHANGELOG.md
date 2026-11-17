@@ -1,5 +1,12 @@
 # Ripple changelog
 
+## v0.1.17
+
+- Files from your computer open much faster: big videos and files start playing at once, read as you watch, instead of downloading the whole file first
+- A file you already opened opens instantly next time, and a changed file is fetched again
+- Saving and opening big files uses several streams at once and bigger network buffers, so transfers fill the connection sooner
+- The computer side can now send just a slice of a file, which makes seeking in a video even snappier once the Linux app is updated
+
 ## v0.1.16
 
 - New settings: vibrate on the terminal bell, and cursor shape

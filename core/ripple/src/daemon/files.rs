@@ -126,12 +126,16 @@ where
     }
     let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
     proto::write_json(&mut w, &json!({"ok": true, "size": meta.len(), "name": name, "mtime": meta.mtime() * 1000})).await?;
-    let mut buf = vec![0u8; 256 * 1024];
-    loop {
-        let n = f.read(&mut buf).await?;
+    // `len` asks for just a slice of the file (a video player seeking, or a parallel download), so the rest isn't sent.
+    let mut left = req["len"].as_u64().unwrap_or(u64::MAX);
+    let mut buf = vec![0u8; 512 * 1024];
+    while left > 0 {
+        let want = (buf.len() as u64).min(left) as usize;
+        let n = f.read(&mut buf[..want]).await?;
         if n == 0 {
             break;
         }
+        left -= n as u64;
         proto::write_frame(&mut w, proto::KIND_DATA, &buf[..n]).await?;
     }
     proto::write_json(&mut w, &json!({"done": true})).await?;
