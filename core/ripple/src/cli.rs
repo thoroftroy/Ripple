@@ -333,6 +333,14 @@ where
     let (tx, mut rx) = tokio::sync::mpsc::channel::<Frame>(256);
     // Keyboard → session.
     let tx_in = tx.clone();
+    // Ask this terminal to tell us when its window gains focus (DECSET 1004). A phone attached to the same
+    // session may have made it smaller; coming back to this window re-asserts this window's size so the
+    // program fills it again.
+    {
+        let mut o = std::io::stdout().lock();
+        let _ = o.write_all(b"\x1b[?1004h");
+        let _ = o.flush();
+    }
     std::thread::spawn(move || {
         let mut buf = [0u8; 8192];
         let fd = std::io::stdin().as_raw_fd();
@@ -341,7 +349,26 @@ where
             if n <= 0 {
                 break;
             }
-            if tx_in.blocking_send(Frame::Data(buf[..n as usize].to_vec())).is_err() {
+            let mut data: Vec<u8> = Vec::with_capacity(n as usize);
+            let raw = &buf[..n as usize];
+            let mut i = 0;
+            let mut focus_in = false;
+            while i < raw.len() {
+                if raw[i] == 0x1b && i + 2 < raw.len() + 0 && raw[i + 1] == b'[' && (raw[i + 2] == b'I' || raw[i + 2] == b'O') {
+                    focus_in |= raw[i + 2] == b'I';
+                    i += 3;
+                    continue;
+                }
+                data.push(raw[i]);
+                i += 1;
+            }
+            if focus_in {
+                let (c, r) = term_size();
+                if tx_in.blocking_send(Frame::Json(json!({"resize": [c, r]}))).is_err() {
+                    break;
+                }
+            }
+            if !data.is_empty() && tx_in.blocking_send(Frame::Data(data)).is_err() {
                 break;
             }
         }
@@ -388,6 +415,11 @@ where
                 break;
             }
         }
+    }
+    {
+        let mut o = std::io::stdout().lock();
+        let _ = o.write_all(b"\x1b[?1004l");
+        let _ = o.flush();
     }
     drop(raw);
     Ok(code)
