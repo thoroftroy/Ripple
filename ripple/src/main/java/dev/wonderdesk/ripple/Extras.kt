@@ -69,6 +69,14 @@ fun RippleSettings() {
         PanelDivider()
         SwitchRow("Keep the screen on", screenOn, { screenOn = it; Store.setKeepScreenOn(context, it) }, subtitle = "While a terminal is open", icon = WonderIcons.WbSunny)
         PanelDivider()
+        var bell by remember { mutableStateOf(Store.bellVibrate(context)) }
+        SwitchRow("Vibrate on the terminal bell", bell, { bell = it; Store.setBellVibrate(context, it) }, subtitle = "When a program rings the bell, like a finished build", icon = WonderIcons.Notifications)
+        PanelDivider()
+        var cur by remember { mutableIntStateOf(Store.cursorStyle(context)) }
+        Column(Modifier.padding(16.dp, 10.dp)) { Text("Cursor shape", style = MaterialTheme.typography.labelLarge)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { listOf("Block", "Underline", "Bar").forEachIndexed { i, n -> Chip(n, cur == i, { cur = i; Store.setCursorStyle(context, i) }) } }
+            Text("Applies to terminals you open next.", style = MaterialTheme.typography.bodySmall, color = wonderPalette().secondaryText) }
+        PanelDivider()
         var sb by remember { mutableIntStateOf(Store.scrollback(context)) }
         Column(Modifier.padding(16.dp, 10.dp)) { Text("Scrollback: $sb lines", style = MaterialTheme.typography.labelLarge)
             Slider(sb.toFloat(), { sb = ((it / 500).toInt() * 500).coerceAtLeast(500) }, valueRange = 500f..20000f, onValueChangeFinished = { Store.setScrollback(context, sb) })

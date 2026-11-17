@@ -1,5 +1,9 @@
 # Ripple changelog
 
+## v0.1.16
+
+- New settings: vibrate on the terminal bell, and cursor shape
+
 ## v0.1.15
 
 - New setting: how many lines of scrollback a terminal keeps

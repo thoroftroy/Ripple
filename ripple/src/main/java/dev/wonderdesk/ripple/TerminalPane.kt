@@ -209,12 +209,12 @@ class ScreenClient(private val context: Context, private val viewProvider: () ->
         session?.emulator?.paste(text)
     }
     override fun onBell(session: TerminalSession) {
-        runCatching { context.getSystemService(Vibrator::class.java).vibrate(VibrationEffect.createOneShot(40, 80)) }
+        if (Store.bellVibrate(context)) runCatching { context.getSystemService(Vibrator::class.java).vibrate(VibrationEffect.createOneShot(40, 80)) }
     }
     override fun onColorsChanged(session: TerminalSession) { viewProvider()?.invalidate() }
     override fun onTerminalCursorStateChange(state: Boolean) {}
     override fun setTerminalShellPid(session: TerminalSession, pid: Int) {}
-    override fun getTerminalCursorStyle(): Int? = null
+    override fun getTerminalCursorStyle(): Int? = Store.cursorStyle(context)
     override fun logError(tag: String?, message: String?) {}
     override fun logWarn(tag: String?, message: String?) {}
     override fun logInfo(tag: String?, message: String?) {}

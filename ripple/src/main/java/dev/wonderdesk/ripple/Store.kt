@@ -41,6 +41,10 @@ object Store {
     // ---- settings
     fun fontSize(c: Context) = prefs(c).getInt("font_size", 13)
     fun setFontSize(c: Context, v: Int) = prefs(c).edit().putInt("font_size", v.coerceIn(6, 40)).apply()
+    fun bellVibrate(c: Context) = prefs(c).getBoolean("bell_vibrate", true)
+    fun setBellVibrate(c: Context, v: Boolean) = prefs(c).edit().putBoolean("bell_vibrate", v).apply()
+    fun cursorStyle(c: Context) = prefs(c).getInt("cursor_style", 0)
+    fun setCursorStyle(c: Context, v: Int) = prefs(c).edit().putInt("cursor_style", v).apply()
     fun scrollback(c: Context) = prefs(c).getInt("scrollback", 5000)
     fun setScrollback(c: Context, v: Int) = prefs(c).edit().putInt("scrollback", v.coerceIn(500, 50000)).apply()
     fun scheme(c: Context) = prefs(c).getString("scheme", "auto") ?: "auto"
