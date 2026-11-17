@@ -9,7 +9,7 @@ use std::os::fd::AsRawFd;
 use std::time::Duration;
 use tokio::io::{AsyncRead, AsyncWrite};
 
-const HELP: &str = "Ripple — your computer's terminal, from your phone.
+const HELP: &str = "Ripple: your computer's terminal, from your phone.
 
 Usage:
   ripple                      open a terminal attached to a new session

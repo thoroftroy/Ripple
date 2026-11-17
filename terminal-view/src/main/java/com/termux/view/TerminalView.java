@@ -278,6 +278,17 @@ public final class TerminalView extends View {
         mShowKeyboardSuggestions = show;
     }
 
+    /** When on, suggestions and autocorrect switch on by themselves while a full screen app
+     *  (a chat, an editor's prose) is showing, and off again at the shell prompt. */
+    private boolean mAutoKeyboardSuggestions;
+    private boolean mLastAltScreen;
+    public void setAutoKeyboardSuggestions(boolean auto) {
+        mAutoKeyboardSuggestions = auto;
+    }
+    private boolean suggestionsNow() {
+        return mShowKeyboardSuggestions || (mAutoKeyboardSuggestions && mEmulator != null && mEmulator.isAlternateBufferActive());
+    }
+
     /**
      * Sets whether terminal view key logging is enabled or not.
      *
@@ -320,7 +331,7 @@ public final class TerminalView extends View {
         // and the alternate view was the one selected the last time.
         if (mClient.isTerminalViewSelected()) {
             if (mClient.shouldEnforceCharBasedInput()) {
-                if (mShowKeyboardSuggestions) {
+                if (suggestionsNow()) {
                     // Plain text with suggestions and autocorrect, for people who type prose
                     // more than commands. Off by default: a "fixed" command runs the wrong thing.
                     outAttrs.inputType = InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_NORMAL;
@@ -471,6 +482,13 @@ public final class TerminalView extends View {
 
     public void onScreenUpdated(boolean skipScrolling) {
         if (mEmulator == null) return;
+        if (mAutoKeyboardSuggestions) {
+            boolean alt = mEmulator.isAlternateBufferActive();
+            if (alt != mLastAltScreen) {
+                mLastAltScreen = alt;
+                post(() -> { android.view.inputmethod.InputMethodManager imm = (android.view.inputmethod.InputMethodManager) getContext().getSystemService(Context.INPUT_METHOD_SERVICE); if (imm != null) imm.restartInput(this); });
+            }
+        }
 
         int rowsInHistory = mEmulator.getScreen().getActiveTranscriptRows();
         if (mTopRow < -rowsInHistory) setTopRow(-rowsInHistory);

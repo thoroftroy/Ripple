@@ -49,7 +49,7 @@ fn spawn_attempt(set: &mut JoinSet<Attempt>, ep: &quinn::Endpoint, cfg: &quinn::
     let cfg = cfg.clone();
     set.spawn(async move {
         tokio::time::sleep(delay).await;
-        let c = ep.connect_with(cfg, a, "ripple")?.await?;
+        let c = ep.connect_with(cfg, a, "ripple").map_err(|e| anyhow!("{a}: {e}"))?.await.map_err(|e| anyhow!("{a}: {e}"))?;
         Ok((c, a))
     });
 }
@@ -70,6 +70,7 @@ async fn race(
     }
     let deadline = tokio::time::Instant::now() + limit;
     let mut last: Option<anyhow::Error> = None;
+    let mut errs: Vec<String> = vec![];
     loop {
         let waiting_for_more = more.is_some();
         if set.is_empty() && !waiting_for_more {
@@ -78,7 +79,7 @@ async fn race(
         tokio::select! {
             r = set.join_next(), if !set.is_empty() => match r {
                 Some(Ok(Ok(x))) => return Ok(x),
-                Some(Ok(Err(e))) => last = Some(e),
+                Some(Ok(Err(e))) => { errs.push(e.to_string()); last = Some(e) },
                 _ => {}
             },
             m = async { match more.as_mut() { Some(rx) => rx.recv().await, None => std::future::pending().await } } => match m {
@@ -90,7 +91,10 @@ async fn race(
             _ = tokio::time::sleep_until(deadline) => break,
         }
     }
-    Err(last.unwrap_or_else(|| anyhow!("no answer")))
+    if errs.len() > 1 {
+        return Err(anyhow!("{}", errs.join("; ")));
+    }
+    Err(last.unwrap_or_else(|| anyhow!("no answer ({} addresses tried)", tried.len())))
 }
 
 fn explain(e: &anyhow::Error) -> String {
@@ -206,10 +210,15 @@ async fn knock_and_race(
         Ok(x) => Ok(x),
         Err(e) => {
             let msg = explain(&e);
-            if msg != e.to_string() {
+            // Tell the computer why, over the same encrypted doorbell, so the cause can be read there.
+            let detail = e.to_string();
+            let report = json!({"t": "diag", "from": my_fp, "nonce": nonce, "tried": mine, "errors": detail, "ts": crate::util::now_secs()});
+            let b2 = bell.clone();
+            let _ = tokio::task::spawn_blocking(move || b2.ring(&report)).await;
+            if msg != detail {
                 bail!(msg)
             }
-            bail!("Couldn't reach {name}. It may be off or asleep, or its network blocks the path.")
+            bail!("Couldn't reach {name}. It may be off or asleep, or its network blocks the path. Details: {detail}")
         }
     }
 }

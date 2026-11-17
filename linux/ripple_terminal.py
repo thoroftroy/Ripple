@@ -309,7 +309,7 @@ class Tab:
         self.label.set_text(self.name if self.name and not self.name.startswith("Terminal ") else t)
         self.label.set_tooltip_text(t)
         if self.win.current_tab() is self:
-            self.win.set_title("%s — Ripple" % t)
+            self.win.set_title("Ripple: %s" % t)
 
     def on_label_click(self, widget, event):
         if event.type == Gdk.EventType._2BUTTON_PRESS:
@@ -598,7 +598,7 @@ class Window(Gtk.ApplicationWindow):
             menu.append(it)
         for s in hidden:
             home = os.path.expanduser("~")
-            label = "%s — %s  (%s)" % (s["name"], s.get("program", ""), (s.get("cwd") or "").replace(home, "~", 1))
+            label = "%s: %s  (%s)" % (s["name"], s.get("program", ""), (s.get("cwd") or "").replace(home, "~", 1))
             it = Gtk.MenuItem(label=label)
             it.connect("activate", lambda _w, s=s: self.open_tab(s["id"], s["name"]))
             menu.append(it)
@@ -615,7 +615,7 @@ class Window(Gtk.ApplicationWindow):
         t = next((t for t in self.tabs if t.scroll is page), None)
         if t:
             GLib.idle_add(t.term.grab_focus)
-            self.set_title("%s — Ripple" % (t.label.get_tooltip_text() or t.name))
+            self.set_title("Ripple: %s" % (t.label.get_tooltip_text() or t.name))
 
     # ----- keys
     def on_key(self, w, ev):

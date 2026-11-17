@@ -55,7 +55,14 @@ sealed class Screen {
 
 class MainActivity : WonderActivity() {
     private var screen by mutableStateOf<Screen>(Screen.Home)
-    private val notifPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) {}
+    private val notifPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { askNearby() }
+    private val nearbyPermission = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {}
+    /** Newer Android versions fence off computers on the home network until Nearby devices is allowed. */
+    private fun askNearby() {
+        val want = listOf("android.permission.NEARBY_WIFI_DEVICES", "android.permission.ACCESS_LOCAL_NETWORK")
+            .filter { checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }
+        if (want.isNotEmpty() && Build.VERSION.SDK_INT >= 33) runCatching { nearbyPermission.launch(want.toTypedArray()) }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         Ripple.init(this)
@@ -64,7 +71,7 @@ class MainActivity : WonderActivity() {
         Notifier.channels(this)
         if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
             notifPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
-        }
+        } else askNearby()
     }
 
     @Composable

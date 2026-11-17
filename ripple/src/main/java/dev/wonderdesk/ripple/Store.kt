@@ -52,6 +52,9 @@ object Store {
     /** Keyboard suggestions and autocorrect in the terminal. Off by default: a "fixed" command runs the wrong thing. */
     fun keyboardSuggestions(c: Context) = prefs(c).getBoolean("keyboard_suggestions", false)
     fun setKeyboardSuggestions(c: Context, v: Boolean) = prefs(c).edit().putBoolean("keyboard_suggestions", v).apply()
+    /** Autocorrect switches on by itself inside full screen apps (chats), stays off at the shell. */
+    fun autoSuggestions(c: Context) = prefs(c).getBoolean("auto_suggestions", true)
+    fun setAutoSuggestions(c: Context, v: Boolean) = prefs(c).edit().putBoolean("auto_suggestions", v).apply()
     fun extraKeys(c: Context) = prefs(c).getBoolean("extra_keys", true)
     fun setExtraKeys(c: Context, v: Boolean) = prefs(c).edit().putBoolean("extra_keys", v).apply()
     fun alerts(c: Context) = prefs(c).getBoolean("alerts", true)
