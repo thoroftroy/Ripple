@@ -1,5 +1,9 @@
 # Ripple changelog
 
+## v0.1.14
+
+- A new icon
+
 ## v0.1.13
 
 - A failed connection now says why, so it can be fixed
