@@ -18,7 +18,7 @@ import java.io.FileNotFoundException
 
 /**
  * Machine-readable link for Wonderdesk apps (Wayfinder network shares). Unlike the
- * DocumentsProvider — which Android only lets system pickers touch — this plain provider is
+ * DocumentsProvider which Android only lets system pickers touch, this plain provider is
  * guarded by a signature permission, so our own apps can list and browse paired computers
  * automatically, with no picker scavenger hunt. Only apps signed with our key get in;
  * everyone else uses the system picker flow.
@@ -40,6 +40,15 @@ class LinkProvider : ContentProvider() {
 
     private fun ready() { Ripple.init(context!!) }
     private fun fp(uri: Uri) = uri.pathSegments.getOrNull(1) ?: throw FileNotFoundException("no computer")
+
+    /** Phone side paths must stay absolute. An old build once trimmed the leading
+     *  slash, which turned /home/user/file into home/user/file. The daemon reads
+     *  that as relative and answers that it does not exist. */
+    private fun absPath(p: String): String = when {
+        p.isEmpty() -> p
+        p.startsWith("/") || p.startsWith("~") -> p
+        else -> "/$p"
+    }
 
     private fun handle(fp: String): Long = try {
         Transfers.handle(context!!, fp, 20_000)
@@ -75,7 +84,8 @@ class LinkProvider : ContentProvider() {
             }
             LS -> {
                 val f = fp(uri)
-                val path = uri.getQueryParameter("path").orEmpty()
+                val raw = uri.getQueryParameter("path").orEmpty()
+                val path = absPath(raw)
                 val r = request(f, JSONObject().put("op", "ls").put("path", path))
                 r.optString("error").takeIf { it.isNotEmpty() }?.let { throw FileNotFoundException(it) }
                 val a = r.optJSONArray("entries")
@@ -88,7 +98,7 @@ class LinkProvider : ContentProvider() {
                         "size" to e.optLong("size"),
                         "mtime" to e.optLong("mtime"),
                         "hidden" to if (e.optBoolean("hidden")) 1 else 0,
-                        "path" to (path.trimEnd('/') + "/" + e.optString("name")).trim('/'),
+                        "path" to ("/" + (path.trimEnd('/') + "/" + e.optString("name")).trim('/')),
                     )
                     c.newRow().let { row -> c.columnNames.forEach { row.add(vals[it]) } }
                 }
@@ -105,7 +115,7 @@ class LinkProvider : ContentProvider() {
         ready()
         if (uri.pathSegments.firstOrNull() != "file") throw FileNotFoundException(uri.toString())
         val f = fp(uri)
-        val path = uri.getQueryParameter("path") ?: throw FileNotFoundException("no path")
+        val path = absPath(uri.getQueryParameter("path") ?: throw FileNotFoundException("no path"))
         val ctx = context!!
         val h = handle(f)
         if (mode == "r") {
@@ -151,29 +161,29 @@ class LinkProvider : ContentProvider() {
         return when (method) {
             "mkdir" -> {
                 val f = extras?.getString("fp") ?: return null
-                val path = extras.getString("path") ?: return null
+                val path = absPath(extras.getString("path") ?: return null)
                 val r = request(f, JSONObject().put("op", "mkdir").put("path", path))
                 r.optString("error").takeIf { it.isNotEmpty() }?.let { throw FileNotFoundException(it) }
                 Bundle().apply { putString("path", path) }
             }
             "rm" -> {
                 val f = extras?.getString("fp") ?: return null
-                val path = extras.getString("path") ?: return null
+                val path = absPath(extras.getString("path") ?: return null)
                 val r = request(f, JSONObject().put("op", "rm").put("path", path))
                 r.optString("error").takeIf { it.isNotEmpty() }?.let { throw FileNotFoundException(it) }
                 Bundle()
             }
             "mv" -> {
                 val f = extras?.getString("fp") ?: return null
-                val path = extras.getString("path") ?: return null
-                val to = extras.getString("to") ?: return null
+                val path = absPath(extras.getString("path") ?: return null)
+                val to = absPath(extras.getString("to") ?: return null)
                 val r = request(f, JSONObject().put("op", "mv").put("path", path).put("to", to))
                 r.optString("error").takeIf { it.isNotEmpty() }?.let { throw FileNotFoundException(it) }
                 Bundle().apply { putString("path", to) }
             }
             "stat" -> {
                 val f = extras?.getString("fp") ?: return null
-                val path = extras.getString("path") ?: return null
+                val path = absPath(extras.getString("path") ?: return null)
                 val r = request(f, JSONObject().put("op", "stat").put("path", path))
                 r.optString("error").takeIf { it.isNotEmpty() }?.let { throw FileNotFoundException(it) }
                 val e = r.optJSONObject("entry")

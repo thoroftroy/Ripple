@@ -1,5 +1,11 @@
 # Ripple changelog
 
+## v0.1.10
+
+- Tapping in the terminal no longer forces the keyboard when an interactive app uses the mouse. Taps reach menus and lists. Open the keyboard with the keyboard button when typing is needed
+- Removed the extra drag handling that turned scrolls into arrow keys. Scrolling the transcript and pinching to zoom work as before
+- Wayfinder file opens keep the leading slash on PC paths. A photo in the Ripple folder now opens instead of reporting it as missing
+
 ## v0.1.9
 
 - Terminal output now goes out over a single background sender, in order: a slow connection can no longer freeze typing, dragging or tapping
@@ -31,7 +37,7 @@
 ## v0.1.3
 
 - File provider now honours the columns each caller asks for, so Wayfinder lists paired computers and browses their files instead of coming back empty
-- New sessions start at the home folder again — the current folder and recents are still one tap away as chips
+- New sessions start at the home folder again. The current folder and recents are still one tap away as chips
 - Drag anywhere in the terminal to move the cursor, trackpad-style: sideways for left/right, up/down for history or lines. Taps, long-press selection and pinch zoom work as before
 
 ## v0.1.2

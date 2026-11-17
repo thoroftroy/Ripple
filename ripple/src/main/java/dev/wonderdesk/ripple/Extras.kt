@@ -57,7 +57,7 @@ fun RippleSettings() {
         PanelDivider()
         var suggestions by remember { mutableStateOf(Store.keyboardSuggestions(context)) }
         SwitchRow("Keyboard suggestions", suggestions, { suggestions = it; Store.setKeyboardSuggestions(context, it) },
-            subtitle = if (suggestions) "Autocorrect is on — great for prose, risky for commands" else "No fixing while you type, so commands stay exactly as typed", icon = WonderIcons.Edit)
+            subtitle = if (suggestions) "Autocorrect is on. Great for prose but risky for commands" else "No fixing while you type, so commands stay exactly as typed", icon = WonderIcons.Edit)
         PanelDivider()
         SwitchRow("Vibrate on key press", vibrate, { vibrate = it; Store.setVibrateKeys(context, it) }, icon = WonderIcons.TouchApp)
         PanelDivider()

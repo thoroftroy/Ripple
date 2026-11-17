@@ -30,7 +30,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-import kotlin.math.abs
 import com.termux.terminal.TerminalColors
 import com.termux.terminal.TerminalSession
 import com.termux.terminal.TerminalSessionClient
@@ -131,7 +130,12 @@ fun TerminalPane(
                         override fun onSingleTapUp(e: MotionEvent) {
                             onTap()
                             view.requestFocus()
-                            ctx.getSystemService(InputMethodManager::class.java).showSoftInput(view, 0)
+                            // Interactive apps with mouse tracking get the tap as a click
+                            // through onUp. Forcing the keyboard there covers the menu
+                            // the tap just opened, so leave it closed. The keyboard
+                            // button in the extra keys row opens it when typing is needed.
+                            val mouse = view.mEmulator?.isMouseTrackingActive == true
+                            if (!mouse) ctx.getSystemService(InputMethodManager::class.java).showSoftInput(view, 0)
                         }
                         override fun shouldBackButtonBeMappedToEscape() = false
                         override fun shouldEnforceCharBasedInput() = true
@@ -165,31 +169,10 @@ fun TerminalPane(
                         override fun logStackTraceWithMessage(tag: String?, message: String?, e: Exception?) {}
                         override fun logStackTrace(tag: String?, e: Exception?) {}
                     })
-                    // Drag sideways to move the cursor, trackpad-style. Vertical swipes are left
-                    // alone so they scroll the transcript instead of spraying arrow keys.
-                    // Taps, long-press selection and pinch zoom still go to the terminal untouched.
-                    var trackX = 0f; var trackY = 0f; var tracking = false
-                    val touchDensity = ctx.resources.displayMetrics.density
-                    val startSlop = 20 * touchDensity
-                    val keyStep = 14 * touchDensity
-                    setOnTouchListener { _, e ->
-                        when (e.actionMasked) {
-                            MotionEvent.ACTION_DOWN -> { trackX = e.x; trackY = e.y; tracking = false }
-                            MotionEvent.ACTION_POINTER_DOWN, MotionEvent.ACTION_POINTER_UP, MotionEvent.ACTION_CANCEL -> tracking = false
-                            MotionEvent.ACTION_MOVE -> if (e.pointerCount == 1) {
-                                if (!tracking && abs(e.x - trackX) > startSlop && abs(e.x - trackX) > 2 * abs(e.y - trackY)) tracking = true
-                                if (tracking) {
-                                    if (abs(e.y - trackY) > startSlop * 1.5f) tracking = false
-                                    else {
-                                        while (e.x - trackX > keyStep) { handleKeyCode(KeyEvent.KEYCODE_DPAD_RIGHT, 0); trackX += keyStep }
-                                        while (trackX - e.x > keyStep) { handleKeyCode(KeyEvent.KEYCODE_DPAD_LEFT, 0); trackX -= keyStep }
-                                    }
-                                }
-                            } else tracking = false
-                            MotionEvent.ACTION_UP -> tracking = false
-                        }
-                        false
-                    }
+                    // No custom touch handling here on purpose. TerminalView already
+                    // scrolls the transcript, pinches to zoom and sends taps as mouse
+                    // clicks when the app asks for them. Any extra layer that sends
+                    // arrow keys on drags turns scrolls into history searches.
                     onViewReady(this)
                 }
             },

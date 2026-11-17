@@ -299,7 +299,7 @@ class RemoteTerminal(val link: Link, val sessionId: Int, var name: String, val c
                     q to (q.isNotEmpty() && System.currentTimeMillis() - since > pendingMaxAge)
                 }
                 if (stale) Ripple.main.post {
-                    android.widget.Toast.makeText(Ripple.app, "Connection was down a while — dropped unsent typing", android.widget.Toast.LENGTH_LONG).show()
+                    android.widget.Toast.makeText(Ripple.app, "Connection was down a while so unsent typing was dropped", android.widget.Toast.LENGTH_LONG).show()
                 } else if (queued.isNotEmpty()) {
                     if (!runCatching { Native.writeData(s, queued, 0, queued.size) }.getOrDefault(false)) synchronized(pending) {
                         if (pending.size() + queued.size < 256 * 1024) { if (pending.size() == 0) pendingSince = System.currentTimeMillis(); pending.write(queued) }
