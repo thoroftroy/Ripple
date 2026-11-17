@@ -1,5 +1,12 @@
 # Ripple changelog
 
+## v0.1.13
+
+- A failed connection now says why, so it can be fixed
+- Autocorrect switches on by itself inside full-screen apps like chats and stays off at the shell prompt
+- The desktop terminal fills its window again when you return to it after using the phone
+- Asks for the Nearby devices permission newer Android versions need for computers on the home network
+
 ## v0.1.12
 
 - Touch apps that ask for hover tracking now get taps and scrolls. Some terminal apps only turn on that hover mode, which the emulator used to ignore, so taps fell through to the keyboard and swipes sent arrow keys
