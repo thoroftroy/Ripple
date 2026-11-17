@@ -1,5 +1,9 @@
 # Ripple changelog
 
+## v0.1.11
+
+- The file link now streams reads as they arrive so Wayfinder can show progress and cancel mid download. Missing paths still fail fast with the real reason
+
 ## v0.1.10
 
 - Tapping in the terminal no longer forces the keyboard when an interactive app uses the mouse. Taps reach menus and lists. Open the keyboard with the keyboard button when typing is needed

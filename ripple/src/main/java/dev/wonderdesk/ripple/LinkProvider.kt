@@ -122,15 +122,22 @@ class LinkProvider : ContentProvider() {
             val st = request(f, JSONObject().put("op", "stat").put("path", path))
             st.optString("error").takeIf { it.isNotEmpty() }?.let { throw FileNotFoundException(it) }
             if (st.optJSONObject("entry")?.optBoolean("dir") == true) throw FileNotFoundException("That's a folder")
-            // Download straight to a real file, not a pipe: viewers need to seek (video indexes
-            // live at the end of the file), and any failure throws here with the computer's reason
-            // instead of opening blank.
-            val dir = File(ctx.cacheDir, "link-read").apply { mkdirs() }
-            val tmp = File(dir, "${f.hashCode()}-${path.hashCode()}-${path.substringAfterLast('/').take(64)}")
-            ParcelFileDescriptor.open(tmp, ParcelFileDescriptor.MODE_CREATE or ParcelFileDescriptor.MODE_TRUNCATE or ParcelFileDescriptor.MODE_WRITE_ONLY).use { pfd ->
-                Native.download(h, pfd.fd, path) { }
+            // Stream through a pipe so the reader sees bytes from the start and can
+            // report progress with ETA. Wayfinder copies this into its own cache file
+            // before opening a viewer, so seeking still works on the final copy.
+            // A stat check above already throws the real reason for missing paths.
+            val pipe = ParcelFileDescriptor.createPipe()
+            val readEnd = pipe[0]
+            val writeEnd = pipe[1]
+            io.post {
+                try {
+                    Native.download(h, writeEnd.fd, path) { }
+                } catch (_: Exception) {
+                } finally {
+                    runCatching { writeEnd.close() }
+                }
             }
-            return ParcelFileDescriptor.open(tmp, ParcelFileDescriptor.MODE_READ_ONLY)
+            return readEnd
         }
         // Writing: collect into a local file, then send it when the app closes it.
         val dir = File(ctx.cacheDir, "link-write").apply { mkdirs() }
