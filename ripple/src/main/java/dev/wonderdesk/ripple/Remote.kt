@@ -250,19 +250,33 @@ class RemoteTerminal(val link: Link, val sessionId: Int, var name: String, val c
      *  and firing it would run stale commands the user can no longer see or delete. */
     private val pendingMaxAge = 60_000L
 
+    /** All terminal output goes through here, in order, off the UI thread: a slow
+     *  connection must never freeze typing, dragging or tapping. */
+    private val sender = java.util.concurrent.Executors.newSingleThreadExecutor { r ->
+        Thread(r, "ripple-send-$sessionId").apply { isDaemon = true }
+    }
+    private fun postSend(task: () -> Unit) {
+        runCatching { sender.execute { try { task() } catch (_: Exception) { } } }
+    }
+
     val session: TerminalSession = TerminalSession(object : TerminalSession.RemoteTransport {
         override fun send(data: ByteArray, offset: Int, count: Int) {
-            val s = stream.get()
-            if (s != 0L && Native.writeData(s, data, offset, count)) return
-            if (!isEnded) synchronized(pending) {
-                if (pending.size() == 0) pendingSince = System.currentTimeMillis()
-                if (pending.size() < 64 * 1024) pending.write(data, offset, count)
+            // Copy: the caller's buffer is reused after we return.
+            val buf = data.copyOfRange(offset, offset + count)
+            postSend {
+                if (isEnded) return@postSend
+                val s = stream.get()
+                if (s != 0L && runCatching { Native.writeData(s, buf, 0, buf.size) }.getOrDefault(false)) return@postSend
+                if (!isEnded) synchronized(pending) {
+                    if (pending.size() == 0) pendingSince = System.currentTimeMillis()
+                    if (pending.size() + buf.size < 256 * 1024) pending.write(buf)
+                }
             }
         }
         override fun resize(columns: Int, rows: Int) {
             cols = columns; this@RemoteTerminal.rows = rows
             val s = stream.get()
-            if (s != 0L) Thread { Native.writeJson(s, JSONObject().put("resize", JSONArray().put(columns).put(rows)).toString()) }.start()
+            if (s != 0L) postSend { runCatching { Native.writeJson(s, JSONObject().put("resize", JSONArray().put(columns).put(rows)).toString()) } }
         }
         override fun close() { detachStream() }
     }, 5000, client)
@@ -278,14 +292,20 @@ class RemoteTerminal(val link: Link, val sessionId: Int, var name: String, val c
             }
             stream.set(s)
             connected = true
-            val (queued, stale) = synchronized(pending) {
-                val q = pending.toByteArray().also { pending.reset() }
-                val since = pendingSince; pendingSince = 0L
-                q to (q.isNotEmpty() && System.currentTimeMillis() - since > pendingMaxAge)
+            postSend {
+                val (queued, stale) = synchronized(pending) {
+                    val q = pending.toByteArray().also { pending.reset() }
+                    val since = pendingSince; pendingSince = 0L
+                    q to (q.isNotEmpty() && System.currentTimeMillis() - since > pendingMaxAge)
+                }
+                if (stale) Ripple.main.post {
+                    android.widget.Toast.makeText(Ripple.app, "Connection was down a while — dropped unsent typing", android.widget.Toast.LENGTH_LONG).show()
+                } else if (queued.isNotEmpty()) {
+                    if (!runCatching { Native.writeData(s, queued, 0, queued.size) }.getOrDefault(false)) synchronized(pending) {
+                        if (pending.size() + queued.size < 256 * 1024) { if (pending.size() == 0) pendingSince = System.currentTimeMillis(); pending.write(queued) }
+                    }
+                }
             }
-            if (stale) Ripple.main.post {
-                android.widget.Toast.makeText(Ripple.app, "Connection was down a while — dropped unsent typing", android.widget.Toast.LENGTH_LONG).show()
-            } else if (queued.isNotEmpty()) Native.writeData(s, queued, 0, queued.size)
             Ripple.main.post { onState?.invoke() }
             while (true) {
                 val f = Native.read(s) ?: break
@@ -309,17 +329,18 @@ class RemoteTerminal(val link: Link, val sessionId: Int, var name: String, val c
     fun detachStream() {
         val s = stream.getAndSet(0)
         connected = false
-        if (s != 0L) Thread { runCatching { Native.writeJson(s, "{\"detach\":true}"); Native.closeStream(s) } }.start()
+        if (s != 0L) postSend { runCatching { Native.writeJson(s, "{\"detach\":true}"); Native.closeStream(s) } }
     }
 
     fun ended(code: Int) {
         if (isEnded) return
         isEnded = true
+        runCatching { sender.shutdown() }
         session.remoteFinished(code)
         onState?.invoke()
     }
 
-    /** Typed text from outside the keyboard (quick commands, paste). */
+    /** Typed text from outside the keyboard (quick commands, paste). send() queues it in order. */
     fun type(text: String) {
         val b = text.toByteArray()
         Thread { session.write(b, 0, b.size) }.start()

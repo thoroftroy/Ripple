@@ -1,5 +1,10 @@
 # Ripple changelog
 
+## v0.1.9
+
+- Terminal output now goes out over a single background sender, in order: a slow connection can no longer freeze typing, dragging or tapping
+- Terminal scrolling works again: vertical swipes move through the scrollback instead of doing nothing
+
 ## v0.1.8
 
 - Wayfinder file opens download to a real file first instead of a pipe, so video players (which must seek) and picky image viewers actually play and show instead of going blank
