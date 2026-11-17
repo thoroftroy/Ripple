@@ -1,5 +1,9 @@
 # Ripple changelog
 
+## v0.1.19
+
+- Videos and music from your computer open in Cinema or Bliss Player at once and are read as they play, with a bigger read-ahead over several streams
+
 ## v0.1.18
 
 - Wayfinder can now open big files from your computer straight in a viewer: the file is read as it plays, so a long video starts at once and you can jump around in it

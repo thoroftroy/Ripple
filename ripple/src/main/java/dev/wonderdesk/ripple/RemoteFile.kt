@@ -76,11 +76,11 @@ object Ranges {
  * seeking is quick, instead of waiting for the whole file to arrive first. The next slices are fetched ahead of the player.
  */
 class RemoteFile(private val ctx: Context, private val fp: String, private val path: String, private val total: Long) : ProxyFileDescriptorCallback() {
-    private val block = 1 shl 20
+    private val block = 2 shl 20
     private val lock = Any()
-    private val cache = object : LinkedHashMap<Long, ByteArray>(24, .75f, true) { override fun removeEldestEntry(e: MutableMap.MutableEntry<Long, ByteArray>?) = size > 24 }
+    private val cache = object : LinkedHashMap<Long, ByteArray>(24, .75f, true) { override fun removeEldestEntry(e: MutableMap.MutableEntry<Long, ByteArray>?) = size > 32 }
     private val pending = HashMap<Long, Future<ByteArray>>()
-    private val pool = Executors.newFixedThreadPool(3)
+    private val pool = Executors.newFixedThreadPool(6)
 
     override fun onGetSize(): Long = total
 
@@ -109,7 +109,8 @@ class RemoteFile(private val ctx: Context, private val fp: String, private val p
             }
         } catch (e: Exception) { throw ErrnoException("read", OsConstants.EIO) }
         val nextIdx = at / block
-        for (k in 1..3) { val i = nextIdx + k - 1; if (i * block < total) slice(i) }
+        // Keep up to 12 MB in flight ahead of the reader, spread over several streams, so the link stays full.
+        for (k in 1..6) { val i = nextIdx + k - 1; if (i * block < total) slice(i) }
         return done
     }
 

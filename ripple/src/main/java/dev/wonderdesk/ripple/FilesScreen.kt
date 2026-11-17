@@ -91,6 +91,18 @@ fun FilesScreen(fp: String, startPath: String, onBack: () -> Unit) {
     }
 
     fun open(e: RemoteEntry, share: Boolean) {
+        // Videos and music open in Cinema or Bliss Player right away and are read as they play, instead of downloading first.
+        if (!share) {
+            val t = MimeTypeMap.getSingleton().getMimeTypeFromExtension(e.name.substringAfterLast('.', "").lowercase()) ?: ""
+            val player = when { t.startsWith("video/") -> "dev.wonderdesk.cinema"; t.startsWith("audio/") -> "com.blissplayer.music.debug"; else -> null }
+            if (player != null) {
+                val live = android.net.Uri.parse("content://dev.wonderdesk.ripple.link").buildUpon().appendPath("file").appendPath(fp).appendQueryParameter("path", child(e))
+                    .appendQueryParameter("name", e.name).appendQueryParameter("v", "${e.size}-${e.mtime}").build()
+                val intent = Intent(Intent.ACTION_VIEW).setDataAndType(live, t).setPackage(player).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+                intent.clipData = android.content.ClipData.newRawUri(e.name, live)
+                if (runCatching { context.startActivity(intent) }.isSuccess) return
+            }
+        }
         work("Opening ${e.name}…") {
             val f = withContext(Dispatchers.IO) { Transfers.downloadToCache(context, fp, child(e)) { t, pct -> busyDetail = t; busyProgress = pct / 100f } }
             val uri = FileProvider.getUriForFile(context, "dev.wonderdesk.ripple.share", f)
