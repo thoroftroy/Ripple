@@ -279,7 +279,7 @@ class RemoteTerminal(val link: Link, val sessionId: Int, var name: String, val c
             if (s != 0L) postSend { runCatching { Native.writeJson(s, JSONObject().put("resize", JSONArray().put(columns).put(rows)).toString()) } }
         }
         override fun close() { detachStream() }
-    }, 5000, client)
+    }, Store.scrollback(Ripple.app), client)
 
     fun attach(h: Long) {
         if (isEnded || stream.get() != 0L) return

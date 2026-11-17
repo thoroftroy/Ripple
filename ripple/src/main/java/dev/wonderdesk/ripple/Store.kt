@@ -41,6 +41,8 @@ object Store {
     // ---- settings
     fun fontSize(c: Context) = prefs(c).getInt("font_size", 13)
     fun setFontSize(c: Context, v: Int) = prefs(c).edit().putInt("font_size", v.coerceIn(6, 40)).apply()
+    fun scrollback(c: Context) = prefs(c).getInt("scrollback", 5000)
+    fun setScrollback(c: Context, v: Int) = prefs(c).edit().putInt("scrollback", v.coerceIn(500, 50000)).apply()
     fun scheme(c: Context) = prefs(c).getString("scheme", "auto") ?: "auto"
     fun setScheme(c: Context, v: String) = prefs(c).edit().putString("scheme", v).apply()
     fun stayConnected(c: Context) = prefs(c).getBoolean("stay_connected", true)

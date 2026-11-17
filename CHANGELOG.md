@@ -1,5 +1,11 @@
 # Ripple changelog
 
+## v0.1.15
+
+- New setting: how many lines of scrollback a terminal keeps
+- Text size and accent colour chosen in Control Room now apply here
+- New Rotate with the phone switch in Settings. Rotates by default
+
 ## v0.1.14
 
 - A new icon

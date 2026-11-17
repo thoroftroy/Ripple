@@ -6,6 +6,8 @@ import android.os.Bundle
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Slider
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
@@ -66,6 +68,11 @@ fun RippleSettings() {
         SwitchRow("Vibrate on key press", vibrate, { vibrate = it; Store.setVibrateKeys(context, it) }, icon = WonderIcons.TouchApp)
         PanelDivider()
         SwitchRow("Keep the screen on", screenOn, { screenOn = it; Store.setKeepScreenOn(context, it) }, subtitle = "While a terminal is open", icon = WonderIcons.WbSunny)
+        PanelDivider()
+        var sb by remember { mutableIntStateOf(Store.scrollback(context)) }
+        Column(Modifier.padding(16.dp, 10.dp)) { Text("Scrollback: $sb lines", style = MaterialTheme.typography.labelLarge)
+            Slider(sb.toFloat(), { sb = ((it / 500).toInt() * 500).coerceAtLeast(500) }, valueRange = 500f..20000f, onValueChangeFinished = { Store.setScrollback(context, sb) })
+            Text("Applies to terminals you open next. More lines keep more history and use more memory.", style = MaterialTheme.typography.bodySmall, color = wonderPalette().secondaryText) }
     }
     Panel(title = "Quick commands", footer = "Commands you start often, offered when you open a new session. Each one runs in the folder you give it.") {
         if (quick.isEmpty()) ListRow("None yet", subtitle = "For example “btop”, or your build script in your project folder", icon = WonderIcons.PlayArrow)

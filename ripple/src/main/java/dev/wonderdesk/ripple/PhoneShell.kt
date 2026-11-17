@@ -60,7 +60,7 @@ object PhoneShells {
         WdServer.start(c)
         val env = setup(c)
         val home = File(c.filesDir, "home").canonicalPath
-        val s = TerminalSession("/system/bin/sh", home, arrayOf("-sh"), env, 5000, proxy)
+        val s = TerminalSession("/system/bin/sh", home, arrayOf("-sh"), env, Store.scrollback(c), proxy)
         sessions.add(s)
         return s
     }
