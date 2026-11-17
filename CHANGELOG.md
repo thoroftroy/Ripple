@@ -1,5 +1,9 @@
 # Ripple changelog
 
+## v0.1.12
+
+- Touch apps that ask for hover tracking now get taps and scrolls. Some terminal apps only turn on that hover mode, which the emulator used to ignore, so taps fell through to the keyboard and swipes sent arrow keys
+
 ## v0.1.11
 
 - The file link now streams reads as they arrive so Wayfinder can show progress and cancel mid download. Missing paths still fail fast with the real reason

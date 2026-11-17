@@ -481,6 +481,11 @@ public final class TerminalEmulator {
                 return DECSET_BIT_MOUSE_TRACKING_PRESS_RELEASE;
             case 1002:
                 return DECSET_BIT_MOUSE_TRACKING_BUTTON_EVENT;
+            case 1003:
+                // Any-event tracking (hover plus clicks plus wheel): report it like
+                // button-event tracking so touch taps and swipes reach apps that
+                // only ask for this mode instead of falling through to keys.
+                return DECSET_BIT_MOUSE_TRACKING_BUTTON_EVENT;
             case 1004:
                 return DECSET_BIT_SEND_FOCUS_EVENTS;
             case 1006:
