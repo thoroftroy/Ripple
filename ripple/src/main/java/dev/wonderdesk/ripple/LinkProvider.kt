@@ -29,9 +29,11 @@ class LinkProvider : ContentProvider() {
         const val PERMISSION = "dev.wonderdesk.ripple.ACCESS_LINK"
         private const val COMPUTERS = 1
         private const val LS = 2
+        private const val FILE = 3
         private val MATCHER = UriMatcher(UriMatcher.NO_MATCH).apply {
             addURI(AUTHORITY, "computers", COMPUTERS)
             addURI(AUTHORITY, "computers/*/ls", LS)
+            addURI(AUTHORITY, "file/*", FILE)
         }
         private val io by lazy { HandlerThread("ripple-link").apply { start() }.let { Handler(it.looper) } }
     }
@@ -104,6 +106,16 @@ class LinkProvider : ContentProvider() {
                 }
                 c
             }
+            FILE -> {
+                // Name and size, so a viewer that asks "what is this file?" gets an answer.
+                val f = fp(uri)
+                val path = absPath(uri.getQueryParameter("path") ?: throw FileNotFoundException("no path"))
+                val st = request(f, JSONObject().put("op", "stat").put("path", path)).optJSONObject("entry")
+                val c = MatrixCursor(projection ?: arrayOf(android.provider.OpenableColumns.DISPLAY_NAME, android.provider.OpenableColumns.SIZE))
+                val vals = mapOf<String, Any?>(android.provider.OpenableColumns.DISPLAY_NAME to (uri.getQueryParameter("name")?.takeIf { it.isNotBlank() } ?: path.substringAfterLast('/')), android.provider.OpenableColumns.SIZE to (st?.optLong("size") ?: 0L))
+                c.newRow().let { r -> c.columnNames.forEach { r.add(vals[it]) } }
+                c
+            }
             else -> throw FileNotFoundException(uri.toString())
         }
     }
@@ -122,6 +134,15 @@ class LinkProvider : ContentProvider() {
             val st = request(f, JSONObject().put("op", "stat").put("path", path))
             st.optString("error").takeIf { it.isNotEmpty() }?.let { throw FileNotFoundException(it) }
             if (st.optJSONObject("entry")?.optBoolean("dir") == true) throw FileNotFoundException("That's a folder")
+            // Big files are read on demand through a seekable file, so a video starts at once and can jump around
+            // without the whole file arriving first.
+            val size = st.optJSONObject("entry")?.optLong("size") ?: 0L
+            if (size > 6L * 1024 * 1024 && android.os.Build.VERSION.SDK_INT >= 26) {
+                val sm = ctx.getSystemService(android.os.storage.StorageManager::class.java)
+                val reader = HandlerThread("ripple-link-read").apply { start() }
+                return try { sm.openProxyFileDescriptor(ParcelFileDescriptor.MODE_READ_ONLY, RemoteFile(ctx, f, path, size), Handler(reader.looper)) }
+                catch (e: Exception) { reader.quitSafely(); throw FileNotFoundException(e.message) }
+            }
             // Stream through a pipe so the reader sees bytes from the start and can
             // report progress with ETA. Wayfinder copies this into its own cache file
             // before opening a viewer, so seeking still works on the final copy.

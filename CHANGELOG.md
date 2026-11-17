@@ -1,5 +1,10 @@
 # Ripple changelog
 
+## v0.1.18
+
+- Wayfinder can now open big files from your computer straight in a viewer: the file is read as it plays, so a long video starts at once and you can jump around in it
+- Fixed a rare crash where the background connection did not announce itself to Android in time
+
 ## v0.1.17
 
 - Files from your computer open much faster: big videos and files start playing at once, read as you watch, instead of downloading the whole file first

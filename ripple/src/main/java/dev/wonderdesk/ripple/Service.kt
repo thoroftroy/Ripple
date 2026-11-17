@@ -84,21 +84,29 @@ class RippleService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        Ripple.init(this)
-        Notifier.channels(this)
-        if (intent?.action == "stop") {
-            Ripple.active().forEach { it.stop() }
-            stopSelf()
-            return START_NOT_STICKY
-        }
-        val names = Ripple.active().joinToString { it.computer.name }.ifBlank { "your computer" }
+    /** Shows the "connected" notification. Android gives a few seconds after startForegroundService to do this, no matter what else happens. */
+    private fun goForeground(names: String) {
         val stop = PendingIntent.getService(this, 1, Intent(this, RippleService::class.java).setAction("stop"), PendingIntent.FLAG_IMMUTABLE)
         val open = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
         val n = Notification.Builder(this, Notifier.CH_LINK).setSmallIcon(R.drawable.ic_stat_ripple)
             .setContentTitle("Connected to $names").setContentText("Sessions can alert you while Ripple is closed")
             .setContentIntent(open).addAction(Notification.Action.Builder(null, "Disconnect", stop).build()).setOngoing(true).build()
         if (Build.VERSION.SDK_INT >= 34) startForeground(1, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE) else startForeground(1, n)
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // Promote to a foreground service first, before anything that could be slow or fail, so Android never kills the app
+        // for "did not call startForeground in time". That includes the stop request, which must also start with it.
+        Notifier.channels(this)
+        goForeground("your computer")
+        runCatching { Ripple.init(this) }
+        if (intent?.action == "stop") {
+            runCatching { Ripple.active().forEach { it.stop() } }
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
+            return START_NOT_STICKY
+        }
+        runCatching { Ripple.active().joinToString { it.computer.name }.ifBlank { null } }.getOrNull()?.let { goForeground(it) }
         watchNetwork()
         return START_STICKY
     }

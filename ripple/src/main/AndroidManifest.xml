@@ -42,6 +42,7 @@
         </service>
         <receiver android:name=".ActionReceiver" android:exported="false" />
         <provider android:name=".LinkProvider" android:authorities="dev.wonderdesk.ripple.link" android:exported="true"
+            android:grantUriPermissions="true"
             android:readPermission="dev.wonderdesk.ripple.ACCESS_LINK" android:writePermission="dev.wonderdesk.ripple.ACCESS_LINK" />
         <provider android:name=".ComputerFilesProvider" android:authorities="dev.wonderdesk.ripple.files" android:exported="true"
             android:grantUriPermissions="true" android:permission="android.permission.MANAGE_DOCUMENTS">
