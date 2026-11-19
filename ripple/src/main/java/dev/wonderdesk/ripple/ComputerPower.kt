@@ -89,16 +89,25 @@ fun UsageStrip(u: Usage, onClick: () -> Unit) {
     }
 }
 
+/** What the usage strip shows: figures, or a note that the computer's Ripple is too old to report them. */
+data class UsageState(val usage: Usage? = null, val old: Boolean = false)
+
+/** Turns a failed request into something a person can act on. */
+fun friendlyError(e: String?, computer: String): String =
+    if (e != null && e.startsWith("unknown request")) "$computer is running an older Ripple that can't do this yet. It updates itself within hours, or run the installer again to update now."
+    else e ?: "Something went wrong"
+
 /** Polls the computer's usage every few seconds, only while the screen is showing and the link is up. */
 @Composable
-fun rememberUsage(link: Link, connected: Boolean, enabled: Boolean): State<Usage?> {
-    val usage = remember(link) { mutableStateOf<Usage?>(null) }
+fun rememberUsage(link: Link, connected: Boolean, enabled: Boolean): State<UsageState> {
+    val usage = remember(link) { mutableStateOf(UsageState()) }
     val resumed = rememberIsResumed()
     LaunchedEffect(link, connected, enabled, resumed) {
         if (!connected || !enabled || !resumed) return@LaunchedEffect
         while (isActive) {
-            val u = withContext(Dispatchers.IO) { runCatching { Usage.from(link.request(JSONObject().put("op", "stats"))) }.getOrNull() }
-            if (u != null) usage.value = u
+            val r = withContext(Dispatchers.IO) { runCatching { link.request(JSONObject().put("op", "stats")) } }
+            r.onSuccess { o -> usage.value = if (o.has("error")) UsageState(old = o.optString("error").startsWith("unknown request")) else UsageState(Usage.from(o)) }
+            r.onFailure { e -> if (e.message?.startsWith("unknown request") == true) usage.value = UsageState(old = true) }
             delay(3000)
         }
     }
@@ -163,4 +172,15 @@ object Wake {
         return if (sent > 0) "Wake-up sent to ${computer.name}. It can take up to a minute to come back."
         else "Couldn't send the wake-up. Are you on the same network as ${computer.name}?"
     }
+}
+
+/** Runs a request and counts a reply with an error in it as a failure. */
+fun Link.ask(o: JSONObject): Result<JSONObject> = runCatching { request(o).also { if (it.has("error")) throw RuntimeException(it.getString("error")) } }
+
+/** Shown in place of the usage strip when there are no figures yet. */
+@Composable
+fun UsageNote(old: Boolean, name: String) {
+    val p = wonderPalette()
+    Text(if (old) "Usage needs the newer Ripple on $name. It updates itself, or run the installer again." else "Reading $name…",
+        Modifier.fillMaxWidth().background(p.panel).padding(horizontal = 12.dp, vertical = 8.dp), style = androidx.compose.material3.MaterialTheme.typography.labelMedium, color = p.secondaryText)
 }

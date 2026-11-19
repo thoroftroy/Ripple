@@ -165,6 +165,7 @@ class Link(var computer: Computer) {
             val ev = runCatching { JSONObject(String(f, 1, f.size - 1)) }.getOrNull() ?: continue
             when (ev.optString("event")) {
                 "sessions" -> ev.optJSONArray("sessions")?.let { sessions.value = parse(it) }
+                "clip" -> if (ev.optString("from") != "phone") ClipSync.fromComputer(Ripple.app, ev.optString("text"))
                 "ended" -> {
                     val id = ev.optInt("session")
                     Ripple.main.post { terminals[id]?.ended(ev.optInt("code")) }

@@ -41,6 +41,10 @@ pub struct Config {
     pub look: String,
     /// Follow the look of the phone that connects.
     pub follow_phone_look: bool,
+    /// Start the sessions that were open again when the service starts (after a restart or reboot).
+    pub restore_sessions: bool,
+    /// Share copied text between the computer and paired phones.
+    pub clipboard_sync: bool,
 }
 
 impl Default for Config {
@@ -59,6 +63,8 @@ impl Default for Config {
             auto_update: true,
             look: "AQUA".into(),
             follow_phone_look: true,
+            restore_sessions: true,
+            clipboard_sync: true,
         }
     }
 }
@@ -126,6 +132,9 @@ pub struct Daemon {
     pub seen_nonces: Mutex<Vec<String>>,
     /// Environment from the desktop session (DISPLAY, SSH_AUTH_SOCK…) for new sessions.
     pub session_env: Mutex<Vec<(String, String)>>,
+    /// Recently copied text, newest first, shared between the computer and phones.
+    pub clips: Mutex<Vec<Value>>,
+    pub shutting_down: std::sync::atomic::AtomicBool,
 }
 
 impl Daemon {
@@ -152,6 +161,8 @@ impl Daemon {
             doorbell_state: Mutex::new((false, String::new())),
             seen_nonces: Mutex::new(vec![]),
             session_env: Mutex::new(vec![]),
+            clips: Mutex::new(vec![]),
+            shutting_down: std::sync::atomic::AtomicBool::new(false),
         });
         d.save_config()?;
         Ok(d)
@@ -246,6 +257,56 @@ impl Daemon {
         let _ = self.events.send(json!({"event": "sessions", "sessions": self.list_sessions()}));
     }
 
+    /// Remembers which sessions are open so they can start again after a restart or reboot.
+    pub fn save_sessions(&self) {
+        if self.shutting_down.load(Ordering::SeqCst) {
+            return;
+        }
+        let list: Vec<Value> = self.sessions.lock().unwrap().values().map(|s| {
+            let sum = s.summary();
+            json!({"name": s.name.lock().unwrap().clone(), "cwd": sum["cwd"], "command": s.command, "cols": sum["cols"], "rows": sum["rows"]})
+        }).collect();
+        let path = config_dir().join("sessions.json");
+        let text = serde_json::to_vec_pretty(&list).unwrap_or_default();
+        if std::fs::read(&path).ok().as_deref() != Some(&text) {
+            let _ = crate::identity::write_private(&path, &text);
+        }
+    }
+
+    pub fn restore_sessions(self: &Arc<Self>) {
+        if !self.cfg.read().unwrap().restore_sessions {
+            return;
+        }
+        let Ok(raw) = std::fs::read(config_dir().join("sessions.json")) else { return };
+        let Ok(list) = serde_json::from_slice::<Vec<Value>>(&raw) else { return };
+        for v in list.iter().take(40) {
+            let name = v["name"].as_str().map(String::from);
+            let cwd = v["cwd"].as_str().map(String::from);
+            let command = v["command"].as_str().map(String::from);
+            let cols = v["cols"].as_u64().unwrap_or(100) as u16;
+            let rows = v["rows"].as_u64().unwrap_or(30) as u16;
+            let _ = self.new_session(name, cwd, command, cols, rows);
+        }
+    }
+
+    /// Adds copied text to the shared clipboard history and tells everyone listening.
+    pub fn add_clip(&self, text: String, from: &str) -> bool {
+        if text.is_empty() || text.len() > 1_000_000 || !self.cfg.read().unwrap().clipboard_sync {
+            return false;
+        }
+        let mut clips = self.clips.lock().unwrap();
+        if clips.first().map(|c| c["text"] == text.as_str()).unwrap_or(false) {
+            return false;
+        }
+        clips.retain(|c| c["text"] != text.as_str());
+        let entry = json!({"text": text, "from": from, "at": crate::util::now_secs()});
+        clips.insert(0, entry.clone());
+        clips.truncate(30);
+        drop(clips);
+        let _ = self.events.send(json!({"event": "clip", "text": entry["text"], "from": from, "at": entry["at"]}));
+        true
+    }
+
     pub fn new_code(&self) -> String {
         let code = crate::util::readable_code(10);
         let mut codes = self.codes.lock().unwrap();
@@ -273,6 +334,7 @@ pub async fn run() -> Result<()> {
     let sock = socket_path();
     server::serve_unix(d.clone(), &sock).await?;
     reach::start(d.clone()).await;
+    d.restore_sessions();
     // Background upkeep: quiet-session notifications.
     let me = d.clone();
     tokio::spawn(async move {
@@ -283,6 +345,7 @@ pub async fn run() -> Result<()> {
             for s in list {
                 s.check_quiet(secs);
             }
+            me.save_sessions();
         }
     });
     // Updates: check GitHub every few hours; when a new binary is installed, restart into it as
@@ -315,6 +378,8 @@ pub async fn run() -> Result<()> {
         _ = tokio::signal::ctrl_c() => {},
         _ = term.recv() => {},
     }
+    d.save_sessions();
+    d.shutting_down.store(true, Ordering::SeqCst);
     let list: Vec<Arc<Session>> = d.sessions.lock().unwrap().values().cloned().collect();
     for s in list {
         s.kill();

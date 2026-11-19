@@ -1,9 +1,13 @@
 # Ripple changelog
 
-## v0.1.20
+## v0.1.21
 
 - The top bar now shows how busy your computer is (processor, memory, graphics, temperature); tap it from the menu for the full picture with network, disk and uptime. Turn it off in Settings
 - Sleep your computer from the menu, lock it, and wake it again from the phone when you are on the same network (the Wake button appears whenever it is offline)
+- The usage figures are now always shown under the top bar, with a small bar for each, and say so plainly when the computer's Ripple is too old to report them. Sleep and lock now explain a failure (an older Ripple on the computer) instead of just showing an error
+- Sessions you had open come back by themselves after the computer restarts or the Ripple service updates, in the same folders with the same names
+- Copied text is shared both ways between the phone and the computer, with a clipboard history list on the phone (menu, Clipboard history)
+- New Features section in Settings to turn off the clipboard sharing, Files button, sleep/lock/wake menu and session tabs
 - Terminals started on the phone now open as tabs in the computer's Ripple window straight away, and renames show on both sides (needs the updated Linux app)
 
 ## v0.1.19

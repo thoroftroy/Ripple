@@ -26,6 +26,10 @@ fun RippleSettings() {
     val context = LocalContext.current
     var stay by remember { mutableStateOf(Store.stayConnected(context)) }
     var alerts by remember { mutableStateOf(Store.alerts(context)) }
+    var clipSync by remember { mutableStateOf(Store.clipSync(context)) }
+    var showFiles by remember { mutableStateOf(Store.showFiles(context)) }
+    var showPower by remember { mutableStateOf(Store.showPower(context)) }
+    var showTabs by remember { mutableStateOf(Store.showSessionTabs(context)) }
     var usageBar by remember { mutableStateOf(Store.showUsage(context)) }
     var keys by remember { mutableStateOf(Store.extraKeys(context)) }
     var vibrate by remember { mutableStateOf(Store.vibrateKeys(context)) }
@@ -35,6 +39,15 @@ fun RippleSettings() {
     var quick by remember { mutableStateOf(Store.quickCommands(context)) }
     var editing by remember { mutableStateOf<Int?>(null) }
 
+    Panel(title = "Features", footer = "Choose what shows up. Changes apply the next time you open a computer.") {
+        SwitchRow("Share the clipboard with the computer", clipSync, { clipSync = it; Store.setClipSync(context, it) }, subtitle = "Text you copy on either side can be pasted on the other, with a history list", icon = WonderIcons.ContentPaste)
+        PanelDivider()
+        SwitchRow("Files button", showFiles, { showFiles = it; Store.setShowFiles(context, it) }, subtitle = "Browse and move files in the top bar", icon = WonderIcons.Folder)
+        PanelDivider()
+        SwitchRow("Sleep, lock and wake", showPower, { showPower = it; Store.setShowPower(context, it) }, subtitle = "Power actions in the menu", icon = WonderIcons.Bolt)
+        PanelDivider()
+        SwitchRow("Session tabs", showTabs, { showTabs = it; Store.setShowSessionTabs(context, it) }, subtitle = "The row of tabs above the terminal", icon = WonderIcons.Tune)
+    }
     Panel(title = "Connection") {
         SwitchRow("Show computer usage in the top bar", usageBar, { usageBar = it; Store.setShowUsage(context, it) },
             subtitle = "Processor, memory, graphics and temperature of the computer. Tap it for more.", icon = WonderIcons.Tune)

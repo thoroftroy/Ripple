@@ -446,6 +446,9 @@ class Window(Gtk.ApplicationWindow):
         if not self.tabs:
             self.new_tab()
         Watcher(self.on_event).start()
+        self.clip_last = ""
+        self.clipboard = Gtk.Clipboard.get(Gdk.SELECTION_CLIPBOARD)
+        self.clipboard.connect("owner-change", lambda *_: self.clipboard.request_text(self._clip_changed))
         threading.Thread(target=self._check_firewall, daemon=True).start()
         self.update_status()
         return False
@@ -701,12 +704,30 @@ class Window(Gtk.ApplicationWindow):
                 self.pair_dialog.destroy()
                 self.pair_dialog = None
                 self.status.set_text("Phone paired. Open Ripple on it to see your sessions.")
+        elif kind == "clip":
+            text = ev.get("text") or ""
+            if ev.get("from") != "computer" and text and text != getattr(self, "clip_last", ""):
+                self.clip_last = text
+                self.clipboard.set_text(text, -1)
+                self.clipboard.store()
         elif kind == "look":
             self.look = ev.get("look", "AQUA")
             self.apply_look()
         elif kind == "file_received":
             self.status.set_text("Received %s from your phone → %s" % (ev.get("name"), ev.get("path")))
         return False
+
+    def _clip_changed(self, cb, text):
+        """Something was copied on this computer: share it with the phones."""
+        if not text or text == getattr(self, "clip_last", ""):
+            return
+        self.clip_last = text
+        def send():
+            try:
+                request({"op": "clip_set", "text": text})
+            except Exception:
+                pass
+        threading.Thread(target=send, daemon=True).start()
 
     def sync_tabs(self):
         """Keeps the tabs in step with the service: a session started from the phone (or the command line)

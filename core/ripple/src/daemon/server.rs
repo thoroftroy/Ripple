@@ -88,7 +88,7 @@ where
         proto::write_json(&mut w, &err("This phone isn't paired with this computer (or was forgotten). Pair again.")).await?;
         return Ok(());
     }
-    let local_only = ["pair_code", "pair_answer", "devices", "forget", "config", "set_config", "offer", "notify", "set_env"];
+    let local_only = ["pair_code", "pair_answer", "devices", "forget", "config", "set_config", "offer", "notify", "set_env", "clip_clear"];
     if !peer.local && local_only.contains(&op.as_str()) {
         proto::write_json(&mut w, &err("Only allowed on the computer itself")).await?;
         return Ok(());
@@ -97,6 +97,13 @@ where
         "hello" | "info" => json!({"computer": d.info(), "sessions": d.list_sessions(), "doorbell": doorbell_status(&d)}),
         "stats" => super::stats::stats().await,
         "power" => super::stats::power(req["action"].as_str().unwrap_or("")),
+        "clip_set" => {
+            let from = if peer.local { "computer" } else { "phone" };
+            let added = d.add_clip(req["text"].as_str().unwrap_or("").to_string(), from);
+            json!({"ok": true, "added": added})
+        }
+        "clip_list" => json!({"clips": d.clips.lock().unwrap().clone(), "enabled": d.cfg.read().unwrap().clipboard_sync}),
+        "clip_clear" => { d.clips.lock().unwrap().clear(); json!({"ok": true}) }
         "sessions" => json!({"sessions": d.list_sessions()}),
         "set_env" => {
             const KEEP: [&str; 10] = ["DISPLAY", "WAYLAND_DISPLAY", "XAUTHORITY", "DBUS_SESSION_BUS_ADDRESS", "SSH_AUTH_SOCK", "GPG_AGENT_INFO", "XDG_SESSION_TYPE", "XDG_CURRENT_DESKTOP", "LANG", "PATH"];
@@ -257,6 +264,12 @@ fn set_config(d: &Arc<Daemon>, req: &Value) -> Value {
         }
         if let Some(v) = req["follow_phone_look"].as_bool() {
             c.follow_phone_look = v;
+        }
+        if let Some(v) = req["restore_sessions"].as_bool() {
+            c.restore_sessions = v;
+        }
+        if let Some(v) = req["clipboard_sync"].as_bool() {
+            c.clipboard_sync = v;
         }
         if let Some(v) = req["extra_addresses"].as_array() {
             c.extra_addresses = v.iter().filter_map(|x| x.as_str().map(String::from)).filter(|s| !s.trim().is_empty()).collect();
