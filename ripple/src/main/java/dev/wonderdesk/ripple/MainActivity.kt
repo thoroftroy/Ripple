@@ -134,6 +134,8 @@ fun HomeScreen(open: (Screen) -> Unit) {
     var computers by remember { mutableStateOf(Store.computers(context)) }
     var menuFor by remember { mutableStateOf<Computer?>(null) }
     var confirmForget by remember { mutableStateOf<Computer?>(null) }
+    val scope = rememberCoroutineScope()
+    val toast: (String) -> Unit = { android.widget.Toast.makeText(context, it, android.widget.Toast.LENGTH_LONG).show() }
     WonderApp(
         appName = "Ripple",
         about = "Your computer's terminal on your phone: run programs there, keep them going when you disconnect, and pick up from anywhere. Files move both ways. Everything connects directly between your own devices.",
@@ -168,6 +170,7 @@ fun HomeScreen(open: (Screen) -> Unit) {
                                 onLongClick = { menuFor = c }, onClick = { open(Screen.Remote(c.fp)) })
                             DropdownMenu(menuFor == c, { menuFor = null }) {
                                 DropdownMenuItem({ Text("Files") }, { menuFor = null; open(Screen.Files(c.fp)) })
+                                DropdownMenuItem({ Text("Wake it up") }, { menuFor = null; scope.launch { toast(withContext(Dispatchers.IO) { Wake.send(c) }) } })
                                 DropdownMenuItem({ Text("Forget this computer") }, { menuFor = null; confirmForget = c })
                             }
                         }
@@ -208,7 +211,7 @@ fun RemoteScreen(fp: String, startSession: Int, open: (Screen) -> Unit) {
     var renaming by remember { mutableStateOf<SessionInfo?>(null) }
     var refresh by remember { mutableIntStateOf(0) }
     val scope = rememberCoroutineScope()
-    val toast = LocalToast.current
+    val toast: (String) -> Unit = { android.widget.Toast.makeText(context, it, android.widget.Toast.LENGTH_LONG).show() }
 
     // Pick a session: the one asked for, else the most recent.
     LaunchedEffect(sessions) {
@@ -230,6 +233,10 @@ fun RemoteScreen(fp: String, startSession: Int, open: (Screen) -> Unit) {
         onDispose { termView?.let { v -> context.getSystemService(InputMethodManager::class.java).hideSoftInputFromWindow(v.windowToken, 0) } }
     }
     val connected = state is LinkState.Connected
+    val showUsage = remember { Store.showUsage(context) }
+    val usage by rememberUsage(link, connected, showUsage)
+    var showStats by remember { mutableStateOf(false) }
+    var confirmSleep by remember { mutableStateOf(false) }
     val subtitle = when (val s = state) {
         is LinkState.Connected -> s.via.replaceFirstChar { it.uppercase() }
         is LinkState.Connecting -> s.step
@@ -250,11 +257,21 @@ fun RemoteScreen(fp: String, startSession: Int, open: (Screen) -> Unit) {
         menu = listOfNotNull(
             info?.let { WonderMenuItem("Rename session", WonderIcons.Edit) { renaming = it } },
             info?.let { WonderMenuItem("End session", WonderIcons.Close, danger = true) { scope.launch(Dispatchers.IO) { runCatching { link.request(JSONObject().put("op", "kill").put("id", it.id)) } } } },
+            if (connected) WonderMenuItem("Computer usage", WonderIcons.Speed) { if (usage != null) showStats = true else toast("Reading the computer…") } else null,
+            if (connected) WonderMenuItem("Sleep the computer", WonderIcons.Bedtime) { confirmSleep = true } else null,
+            if (connected) WonderMenuItem("Lock the computer", WonderIcons.Lock) {
+                scope.launch(Dispatchers.IO) { runCatching { link.request(JSONObject().put("op", "power").put("action", "lock")) } }
+                toast("Locked ${link.computer.name}")
+            } else null,
+            if (!connected) WonderMenuItem("Wake the computer", WonderIcons.Bolt) {
+                scope.launch { toast(withContext(Dispatchers.IO) { Wake.send(link.computer) }) }
+            } else null,
             WonderMenuItem("Reconnect", WonderIcons.Refresh) { link.reconnectNow() },
         ),
         settings = { RippleSettings() },
     ) {
         Column(Modifier.fillMaxSize()) {
+            if (showUsage && connected) usage?.let { UsageStrip(it) { showStats = true } }
             // Connection banner while not connected.
             when (val s = state) {
                 is LinkState.Connecting -> Banner { LoadingStatus(s.step, compact = true, detail = if (s.attempt > 1) "Attempt ${s.attempt}" else null) }
@@ -268,6 +285,7 @@ fun RemoteScreen(fp: String, startSession: Int, open: (Screen) -> Unit) {
                             Text(s.message, style = MaterialTheme.typography.bodyMedium)
                             Text(if (left > 0) "Trying again in ${left}s" else "Trying again…", style = MaterialTheme.typography.bodySmall, color = wonderPalette().secondaryText)
                         }
+                        WButton("Wake", { scope.launch { toast(withContext(Dispatchers.IO) { Wake.send(link.computer) }) } }, kind = ButtonKind.Plain)
                         WButton("Try now", { link.reconnectNow() })
                     }
                 }
@@ -334,6 +352,14 @@ fun RemoteScreen(fp: String, startSession: Int, open: (Screen) -> Unit) {
             }
         }
     }
+    if (showStats) usage?.let { UsageDialog(link.computer.name, it) { showStats = false } }
+    if (confirmSleep) ConfirmDialog("Sleep ${link.computer.name}?", "Every session stops being reachable until it wakes. You can wake it again from here when this phone is on the same network, or with the power button.", "Sleep", {
+        confirmSleep = false
+        scope.launch {
+            val r = withContext(Dispatchers.IO) { runCatching { link.request(JSONObject().put("op", "power").put("action", "sleep")) } }
+            toast(r.fold({ "${link.computer.name} is going to sleep" }, { it.message ?: "Couldn't sleep the computer" }))
+        }
+    }, { confirmSleep = false })
     if (showNew) NewSessionDialog(link, info?.cwd, onDismiss = { showNew = false }) { id -> showNew = false; current = id }
     renaming?.let { s ->
         InputDialog("Rename session", "Name", s.name, "Rename", { renaming = null }) { name ->

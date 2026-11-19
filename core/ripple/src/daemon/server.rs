@@ -95,6 +95,8 @@ where
     }
     let reply: Value = match op.as_str() {
         "hello" | "info" => json!({"computer": d.info(), "sessions": d.list_sessions(), "doorbell": doorbell_status(&d)}),
+        "stats" => super::stats::stats().await,
+        "power" => super::stats::power(req["action"].as_str().unwrap_or("")),
         "sessions" => json!({"sessions": d.list_sessions()}),
         "set_env" => {
             const KEEP: [&str; 10] = ["DISPLAY", "WAYLAND_DISPLAY", "XAUTHORITY", "DBUS_SESSION_BUS_ADDRESS", "SSH_AUTH_SOCK", "GPG_AGENT_INFO", "XDG_SESSION_TYPE", "XDG_CURRENT_DESKTOP", "LANG", "PATH"];

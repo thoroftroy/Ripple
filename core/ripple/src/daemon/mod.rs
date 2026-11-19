@@ -5,6 +5,7 @@ pub mod files;
 pub mod reach;
 pub mod server;
 pub mod session;
+pub mod stats;
 
 use crate::doorbell::DoorbellInfo;
 use crate::identity::Identity;
@@ -194,6 +195,7 @@ impl Daemon {
             user: std::env::var("USER").unwrap_or_default(),
             home: std::env::var("HOME").unwrap_or_default(),
             shared_dir: cfg.shared_dir.clone(),
+            macs: stats::hardware_addresses(),
         }
     }
 

@@ -353,6 +353,7 @@ class Window(Gtk.ApplicationWindow):
         self.settings = load_settings()
         self.look = "AQUA"
         self.sessions = []
+        self.known_ids = set()
         self.tabs = []
         self.devices_online = {}
         self.pair_dialog = None
@@ -435,6 +436,7 @@ class Window(Gtk.ApplicationWindow):
         self.cfg = cfg
         self.apply_look()
         self.sessions = sessions
+        self.known_ids = {s["id"] for s in sessions}
         detached = [s for s in sessions if s.get("receivers", 0) == 0]
         # The first Ripple window on this computer shows every running session, even ones your phone is
         # attached to, so opening the window resumes your work instead of starting yet another session.
@@ -493,18 +495,22 @@ class Window(Gtk.ApplicationWindow):
         w = self.nb.get_nth_page(page)
         return next((t for t in self.tabs if t.scroll is w), None)
 
-    def open_tab(self, sid, name):
+    def open_tab(self, sid, name, focus=True):
+        self.known_ids.add(sid)
         if any(t.sid == sid for t in self.tabs):
-            self.nb.set_current_page(self.nb.page_num(next(t for t in self.tabs if t.sid == sid).scroll))
+            if focus:
+                self.nb.set_current_page(self.nb.page_num(next(t for t in self.tabs if t.sid == sid).scroll))
             return
         t = Tab(self, sid, name)
         self.tabs.append(t)
         i = self.nb.append_page(t.scroll, t.tab_widget)
         self.nb.set_tab_reorderable(t.scroll, True)
         t.scroll.show_all()
-        self.nb.set_current_page(i)
+        if focus:
+            self.nb.set_current_page(i)
         t.spawn()
-        t.term.grab_focus()
+        if focus:
+            t.term.grab_focus()
 
     def new_tab(self, cwd=None):
         cur = self.current_tab()
@@ -674,16 +680,11 @@ class Window(Gtk.ApplicationWindow):
         kind = ev.get("event")
         if kind == "sessions":
             self.sessions = ev.get("sessions", [])
-            for t in self.tabs:
-                s = next((s for s in self.sessions if s["id"] == t.sid), None)
-                if s and s["name"] != t.name and not t.name.startswith("Terminal "):
-                    pass
-                elif s and s["name"] != t.name:
-                    t.name = s["name"]
-                    t.label.set_text(s["name"])
+            self.sync_tabs()
             self.update_status()
         elif kind == "connected":
             self.sessions = ev.get("sessions", self.sessions)
+            self.sync_tabs()
             self.update_status()
         elif kind == "disconnected":
             self.status.set_text("Reconnecting to the Ripple service…")
@@ -706,6 +707,22 @@ class Window(Gtk.ApplicationWindow):
         elif kind == "file_received":
             self.status.set_text("Received %s from your phone → %s" % (ev.get("name"), ev.get("path")))
         return False
+
+    def sync_tabs(self):
+        """Keeps the tabs in step with the service: a session started from the phone (or the command line)
+        gets a tab here at once, and renames made on either side show up on both."""
+        ids = {s["id"] for s in self.sessions}
+        for s in self.sessions:
+            if s["id"] not in self.known_ids:
+                self.known_ids.add(s["id"])
+                if not any(t.sid == s["id"] for t in self.tabs):
+                    self.open_tab(s["id"], s["name"], focus=False)
+        self.known_ids &= ids | {t.sid for t in self.tabs}
+        for t in self.tabs:
+            s = next((s for s in self.sessions if s["id"] == t.sid), None)
+            if s and s["name"] != t.name:
+                t.name = s["name"]
+                t.label.set_text(s["name"])
 
     def update_status(self):
         n = len(self.sessions)

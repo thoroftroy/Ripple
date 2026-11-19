@@ -27,6 +27,9 @@ pub struct ComputerInfo {
     pub home: String,
     #[serde(default)]
     pub shared_dir: String,
+    /// Hardware addresses of the computer's network cards (wired first), for waking it with a magic packet.
+    #[serde(default)]
+    pub macs: Vec<String>,
 }
 
 pub fn is_global_v6(ip: &Ipv6Addr) -> bool {

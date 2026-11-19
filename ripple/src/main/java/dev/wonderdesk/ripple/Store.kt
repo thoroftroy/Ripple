@@ -12,6 +12,7 @@ data class Computer(val json: JSONObject) {
     val user: String get() = json.optString("user")
     val sharedDir: String get() = json.optString("shared_dir")
     val hasDoorbell: Boolean get() = json.optJSONObject("doorbell") != null
+    val macs: List<String> get() = json.optJSONArray("macs")?.let { a -> (0 until a.length()).map { a.getString(it) } } ?: emptyList()
     val addresses: List<String> get() = json.optJSONArray("addrs")?.let { a -> (0 until a.length()).map { a.getString(it) } } ?: emptyList()
 }
 
@@ -63,6 +64,8 @@ object Store {
     fun setAutoSuggestions(c: Context, v: Boolean) = prefs(c).edit().putBoolean("auto_suggestions", v).apply()
     fun extraKeys(c: Context) = prefs(c).getBoolean("extra_keys", true)
     fun setExtraKeys(c: Context, v: Boolean) = prefs(c).edit().putBoolean("extra_keys", v).apply()
+    fun showUsage(c: Context) = prefs(c).getBoolean("show_usage", true)
+    fun setShowUsage(c: Context, v: Boolean) = prefs(c).edit().putBoolean("show_usage", v).apply()
     fun alerts(c: Context) = prefs(c).getBoolean("alerts", true)
     fun setAlerts(c: Context, v: Boolean) = prefs(c).edit().putBoolean("alerts", v).apply()
     fun lastComputer(c: Context) = prefs(c).getString("last_computer", null)

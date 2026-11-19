@@ -26,6 +26,7 @@ fun RippleSettings() {
     val context = LocalContext.current
     var stay by remember { mutableStateOf(Store.stayConnected(context)) }
     var alerts by remember { mutableStateOf(Store.alerts(context)) }
+    var usageBar by remember { mutableStateOf(Store.showUsage(context)) }
     var keys by remember { mutableStateOf(Store.extraKeys(context)) }
     var vibrate by remember { mutableStateOf(Store.vibrateKeys(context)) }
     var screenOn by remember { mutableStateOf(Store.keepScreenOn(context)) }
@@ -35,6 +36,9 @@ fun RippleSettings() {
     var editing by remember { mutableStateOf<Int?>(null) }
 
     Panel(title = "Connection") {
+        SwitchRow("Show computer usage in the top bar", usageBar, { usageBar = it; Store.setShowUsage(context, it) },
+            subtitle = "Processor, memory, graphics and temperature of the computer. Tap it for more.", icon = WonderIcons.Tune)
+        PanelDivider()
         SwitchRow("Stay connected in the background", stay, { stay = it; Store.setStayConnected(context, it) },
             subtitle = "Keeps your computer's sessions one tap away and lets them alert you. Uses a little battery and data.", icon = WonderIcons.Sync)
         PanelDivider()

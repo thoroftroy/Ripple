@@ -1,5 +1,11 @@
 # Ripple changelog
 
+## v0.1.20
+
+- The top bar now shows how busy your computer is (processor, memory, graphics, temperature); tap it from the menu for the full picture with network, disk and uptime. Turn it off in Settings
+- Sleep your computer from the menu, lock it, and wake it again from the phone when you are on the same network (the Wake button appears whenever it is offline)
+- Terminals started on the phone now open as tabs in the computer's Ripple window straight away, and renames show on both sides (needs the updated Linux app)
+
 ## v0.1.19
 
 - Videos and music from your computer open in Cinema or Bliss Player at once and are read as they play, with a bigger read-ahead over several streams
