@@ -1,5 +1,9 @@
 # Ripple changelog
 
+## v0.3.1
+
+- Fixed an ended session leaving its tab behind and the Close button doing nothing: ending a session (menu, tab menu) or pressing Close on one that finished now closes its tab at once, selects another session, and tells the computer to drop it
+
 ## v0.3.0
 
 - Ripple on the Wonderdesk Launcher's floating button: a card for each computer showing whether it is on, asleep or unreachable, its processor and memory, and what each terminal session is doing, with New session, Lock, Sleep and Disconnect (or Wake and Connect when it is off). Session alerts and files sent to you also appear as cards

@@ -207,7 +207,9 @@ fun RemoteScreen(fp: String, startSession: Int, open: (Screen) -> Unit) {
     if (link == null) { LaunchedEffect(Unit) { open(Screen.Home) }; return }
     LaunchedEffect(fp) { link.start(); Store.setLastComputer(context, fp) }
     val state by link.state.collectAsState()
-    val sessions by link.sessions.collectAsState()
+    val rawSessions by link.sessions.collectAsState()
+    val dismissed by link.dismissed.collectAsState()
+    val sessions = remember(rawSessions, dismissed) { rawSessions.filter { it.id !in dismissed } }
     var current by rememberSaveable(fp) { mutableIntStateOf(if (startSession >= 0) startSession else Store.lastSession(context, fp)) }
     var termView by remember { mutableStateOf<TerminalView?>(null) }
     val client = remember { ScreenClient(context) { termView } }
@@ -267,7 +269,7 @@ fun RemoteScreen(fp: String, startSession: Int, open: (Screen) -> Unit) {
         },
         menu = listOfNotNull(
             info?.let { WonderMenuItem("Rename session", WonderIcons.Edit) { renaming = it } },
-            info?.let { WonderMenuItem("End session", WonderIcons.Close, danger = true) { scope.launch(Dispatchers.IO) { runCatching { link.request(JSONObject().put("op", "kill").put("id", it.id)) } } } },
+            info?.let { WonderMenuItem("End session", WonderIcons.Close, danger = true) { link.dismiss(it.id) } },
             if (connected) WonderMenuItem("Computer usage", WonderIcons.Speed) { if (usage != null) showStats = true else toast(if (usageState.old) friendlyError("unknown request", link.computer.name) else "Reading the computer…") } else null,
             if (connected && Store.clipSync(context)) WonderMenuItem("Clipboard history", WonderIcons.ContentPaste) { clips = true } else null,
             WonderMenuItem("Notepads (with Scribble)", WonderIcons.Notes) { open(Screen.Notepads(fp)) },
@@ -319,7 +321,7 @@ fun RemoteScreen(fp: String, startSession: Int, open: (Screen) -> Unit) {
                                 DropdownMenuItem({ Text("Files in this folder") }, { tabMenu = null; open(Screen.Files(fp, s.cwd)) })
                                 DropdownMenuItem({ Text("End session") }, {
                                     tabMenu = null
-                                    scope.launch(Dispatchers.IO) { runCatching { link.request(JSONObject().put("op", "kill").put("id", s.id)) } }
+                                    link.dismiss(s.id)
                                 })
                             }
                         }
@@ -345,7 +347,7 @@ fun RemoteScreen(fp: String, startSession: Int, open: (Screen) -> Unit) {
                         Banner(Modifier.align(Alignment.BottomCenter)) {
                             Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Text("This session has ended.", Modifier.weight(1f))
-                                WButton("Close", { link.closeTerminal(terminal.sessionId); current = -1 })
+                                WButton("Close", { link.dismiss(terminal.sessionId); current = -1 })
                             }
                         }
                     }

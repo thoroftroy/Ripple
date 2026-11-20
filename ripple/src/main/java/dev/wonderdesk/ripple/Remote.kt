@@ -74,6 +74,17 @@ object Ripple {
 class Link(var computer: Computer) {
     val state = MutableStateFlow<LinkState>(LinkState.Idle)
     val sessions = MutableStateFlow<List<SessionInfo>>(emptyList())
+    /** Sessions you ended or closed. The computer may keep listing a finished session for a while; these are hidden from the tabs. */
+    val dismissed = MutableStateFlow<Set<Int>>(emptySet())
+
+    /** Ends (if it is still running) and closes a session's tab. Safe to call for a session that has already finished. */
+    fun dismiss(id: Int) {
+        dismissed.value = dismissed.value + id
+        closeTerminal(id)
+        scope.launch { runCatching { request(JSONObject().put("op", "kill").put("id", id)) } }
+    }
+
+    fun visibleSessions(): List<SessionInfo> = sessions.value.filter { it.id !in dismissed.value }
     val terminals = mutableStateMapOf<Int, RemoteTerminal>()
     @Volatile var handle = 0L
     @Volatile var wanted = false
@@ -170,7 +181,7 @@ class Link(var computer: Computer) {
             if (f.isEmpty() || f[0] != Native.KIND_JSON) continue
             val ev = runCatching { JSONObject(String(f, 1, f.size - 1)) }.getOrNull() ?: continue
             when (ev.optString("event")) {
-                "sessions" -> ev.optJSONArray("sessions")?.let { sessions.value = parse(it) }
+                "sessions" -> ev.optJSONArray("sessions")?.let { sessions.value = parse(it); dismissed.value = dismissed.value.filter { d -> sessions.value.any { it.id == d } }.toSet() }
                 "clip" -> if (ev.optString("from") != "phone") ClipSync.fromComputer(Ripple.app, ev.optString("text"))
                 "ended" -> {
                     val id = ev.optInt("session")

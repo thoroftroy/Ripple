@@ -59,7 +59,7 @@ object RippleAssist {
             LinkState.Idle -> if (Store.seenAt(c, comp.fp) > 0 || Store.sleptAt(c, comp.fp) > 0) Presence.short(comp) else "Not connected"
         }
         if (connected) usage[comp.fp]?.let { u -> lines += "Processor ${u.cpu}%, memory ${u.memPct}%" + (u.temp?.let { ", $it°C" } ?: "") }
-        val sessions = link?.sessions?.value.orEmpty()
+        val sessions = link?.visibleSessions().orEmpty()
         if (connected) lines += if (sessions.isEmpty()) "No terminal sessions" else sessions.take(3).joinToString("  ·  ") { s -> (s.name.ifBlank { s.program.ifBlank { "Session ${s.id}" } }) + " " + idle(s.idleSecs) } + if (sessions.size > 3) "  +${sessions.size - 3} more" else ""
         val open = PendingIntent.getActivity(c, comp.fp.hashCode(), Intent(c, MainActivity::class.java).putExtra("computer", comp.fp).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         val actions = if (connected) listOf("New session" to pi(c, comp.fp, SESSION), "Lock" to pi(c, comp.fp, LOCK), "Sleep" to pi(c, comp.fp, SLEEP), "Disconnect" to pi(c, comp.fp, DISCONNECT))
