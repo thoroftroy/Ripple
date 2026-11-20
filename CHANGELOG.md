@@ -1,5 +1,11 @@
 # Ripple changelog
 
+## v0.3.0
+
+- Ripple on the Wonderdesk Launcher's floating button: a card for each computer showing whether it is on, asleep or unreachable, its processor and memory, and what each terminal session is doing, with New session, Lock, Sleep and Disconnect (or Wake and Connect when it is off). Session alerts and files sent to you also appear as cards
+- A one-tap Ripple note: the floating button can make a new note in a Ripple notepad (synced to your computer) and open it in Scribble
+- Wake the computer from the floating button even when Ripple isn't open
+
 ## v0.2.1
 
 - The connection (Disconnect) also shows as a card on the Wonderdesk Launcher's floating button, when it is in use

@@ -73,6 +73,9 @@ object Store {
     fun setSleptAt(c: Context, fp: String, t: Long) = prefs(c).edit().putLong("slept_$fp", t).apply()
     fun seenAt(c: Context, fp: String) = prefs(c).getLong("seen_$fp", 0L)
     fun setSeenAt(c: Context, fp: String, t: Long) = prefs(c).edit().putLong("seen_$fp", t).apply()
+    /** Which computer and folder the Launcher's quick Ripple note goes to. Empty: the first computer, its Notes folder. */
+    fun quickFp(c: Context): String? = prefs(c).getString("quick_fp", null)
+    fun quickRemote(c: Context): String = prefs(c).getString("quick_remote", "").orEmpty()
     fun showPower(c: Context) = prefs(c).getBoolean("show_power", true)
     fun setShowPower(c: Context, v: Boolean) = prefs(c).edit().putBoolean("show_power", v).apply()
     fun showSessionTabs(c: Context) = prefs(c).getBoolean("show_tabs", true)

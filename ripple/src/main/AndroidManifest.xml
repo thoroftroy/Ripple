@@ -1,6 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
     <permission android:name="dev.wonderdesk.ripple.ACCESS_LINK" android:protectionLevel="signature" />
+    <permission android:name="dev.wonderdesk.ripple.QUICK" android:protectionLevel="signature" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_LOCAL_NETWORK" />
     <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES" android:usesPermissionFlags="neverForLocation" />
@@ -42,6 +43,10 @@
             <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="Keeps a live terminal connection to the user's own computer so running sessions can alert them" />
         </service>
         <receiver android:name=".ActionReceiver" android:exported="false" />
+        <receiver android:name=".AssistActionReceiver" android:exported="false" />
+        <receiver android:name=".AssistCommandReceiver" android:exported="true" android:permission="dev.wonderdesk.ripple.QUICK"><intent-filter><action android:name="dev.wonderdesk.ripple.CMD_WAKE" /></intent-filter></receiver>
+        <receiver android:name=".AssistRefreshReceiver" android:exported="true"><intent-filter><action android:name="dev.wonderdesk.assist.REFRESH" /></intent-filter></receiver>
+        <activity android:name=".QuickNoteActivity" android:exported="true" android:permission="dev.wonderdesk.ripple.QUICK" android:theme="@android:style/Theme.Translucent.NoTitleBar" android:excludeFromRecents="true" android:taskAffinity="" />
         <provider android:name=".LinkProvider" android:authorities="dev.wonderdesk.ripple.link" android:exported="true"
             android:grantUriPermissions="true"
             android:readPermission="dev.wonderdesk.ripple.ACCESS_LINK" android:writePermission="dev.wonderdesk.ripple.ACCESS_LINK" />

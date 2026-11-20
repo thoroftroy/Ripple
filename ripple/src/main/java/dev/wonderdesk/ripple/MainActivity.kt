@@ -87,6 +87,10 @@ class MainActivity : WonderActivity() {
         val data = intent?.data
         if (data?.scheme == "ripple") { screen = Screen.Pair(data.toString()); return }
         val fp = intent?.getStringExtra("computer")
+        when (intent?.getStringExtra("open")) {
+            "notepads" -> { (fp ?: Store.computers(this).firstOrNull()?.fp)?.let { screen = Screen.Notepads(it); return } }
+            "files" -> { (fp ?: Store.computers(this).firstOrNull()?.fp)?.let { screen = Screen.Files(it); return } }
+        }
         if (fp != null && Store.computer(this, fp) != null) { screen = Screen.Remote(fp, intent.getIntExtra("session", -1)); return }
         if (first) {
             // Open where you left off.

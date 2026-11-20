@@ -79,6 +79,10 @@ class Link(var computer: Computer) {
     @Volatile var wanted = false
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var job: Job? = null
+    init {
+        // Keep this computer's card on the Launcher's floating button true: on, asleep, what its sessions are doing.
+        scope.launch { kotlinx.coroutines.flow.combine(state, sessions) { s, l -> s.toString() + l.joinToString { "${it.id}${it.idleSecs / 60}" } }.collect { delay(600); RippleAssist.refresh() } }
+    }
     private val wake = kotlinx.coroutines.channels.Channel<Unit>(kotlinx.coroutines.channels.Channel.CONFLATED)
     private var watchStream = 0L
     var events: ((JSONObject) -> Unit)? = null
