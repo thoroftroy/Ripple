@@ -50,6 +50,7 @@ sealed class Screen {
     data class Pair(val uri: String? = null) : Screen()
     data class Remote(val fp: String, val session: Int = -1) : Screen()
     data class Files(val fp: String, val path: String = "") : Screen()
+    data class Notepads(val fp: String) : Screen()
     data object Phone : Screen()
 }
 
@@ -116,6 +117,7 @@ class MainActivity : WonderActivity() {
             is Screen.Pair -> PairScreen(s.uri, onDone = { fp -> screen = if (fp != null) Screen.Remote(fp) else Screen.Home })
             is Screen.Remote -> RemoteScreen(s.fp, s.session, open = { screen = it })
             is Screen.Files -> FilesScreen(s.fp, s.path, onBack = { screen = Screen.Remote(s.fp) })
+            is Screen.Notepads -> NotepadsScreen(s.fp, onBack = { screen = Screen.Remote(s.fp) })
             Screen.Phone -> PhoneShellScreen(onBack = { screen = Screen.Home })
         }
     }
@@ -162,7 +164,7 @@ fun HomeScreen(open: (Screen) -> Unit) {
                         val sub = when (val x = st) {
                             is LinkState.Connected -> "Connected · ${x.via}"
                             is LinkState.Connecting -> x.step
-                            is LinkState.Offline -> x.message
+                            is LinkState.Offline -> Presence.short(c)
                             LinkState.Idle -> if (c.hasDoorbell) "Reachable at home and away" else "Reachable on its home network"
                         }
                         Box {
@@ -245,7 +247,7 @@ fun RemoteScreen(fp: String, startSession: Int, open: (Screen) -> Unit) {
     val subtitle = when (val s = state) {
         is LinkState.Connected -> s.via.replaceFirstChar { it.uppercase() }
         is LinkState.Connecting -> s.step
-        is LinkState.Offline -> "Offline"
+        is LinkState.Offline -> if (Store.sleptAt(context, link.computer.fp) > 0) "Asleep" else "Not reachable"
         LinkState.Idle -> null
     }
 
@@ -264,6 +266,7 @@ fun RemoteScreen(fp: String, startSession: Int, open: (Screen) -> Unit) {
             info?.let { WonderMenuItem("End session", WonderIcons.Close, danger = true) { scope.launch(Dispatchers.IO) { runCatching { link.request(JSONObject().put("op", "kill").put("id", it.id)) } } } },
             if (connected) WonderMenuItem("Computer usage", WonderIcons.Speed) { if (usage != null) showStats = true else toast(if (usageState.old) friendlyError("unknown request", link.computer.name) else "Reading the computer…") } else null,
             if (connected && Store.clipSync(context)) WonderMenuItem("Clipboard history", WonderIcons.ContentPaste) { clips = true } else null,
+            WonderMenuItem("Notepads (with Scribble)", WonderIcons.Notes) { open(Screen.Notepads(fp)) },
             if (connected && showPower) WonderMenuItem("Sleep the computer", WonderIcons.Bedtime) { confirmSleep = true } else null,
             if (connected && showPower) WonderMenuItem("Lock the computer", WonderIcons.Lock) {
                 scope.launch {
@@ -290,7 +293,9 @@ fun RemoteScreen(fp: String, startSession: Int, open: (Screen) -> Unit) {
                         Icon(WonderIcons.Warning, null, tint = wonderPalette().warning)
                         Spacer(Modifier.width(10.dp))
                         Column(Modifier.weight(1f)) {
-                            Text(s.message, style = MaterialTheme.typography.bodyMedium)
+                            val why = remember(s) { Presence.explain(link.computer) }
+                            Text(why.first, style = MaterialTheme.typography.titleSmall)
+                            Text(why.second, style = MaterialTheme.typography.bodySmall, color = wonderPalette().secondaryText)
                             Text(if (left > 0) "Trying again in ${left}s" else "Trying again…", style = MaterialTheme.typography.bodySmall, color = wonderPalette().secondaryText)
                         }
                         WButton("Wake", { scope.launch { toast(withContext(Dispatchers.IO) { Wake.send(link.computer) }) } }, kind = ButtonKind.Plain)
@@ -375,6 +380,7 @@ fun RemoteScreen(fp: String, startSession: Int, open: (Screen) -> Unit) {
         confirmSleep = false
         scope.launch {
             val r = withContext(Dispatchers.IO) { link.ask(JSONObject().put("op", "power").put("action", "sleep")) }
+            if (r.isSuccess) Store.setSleptAt(context, link.computer.fp, System.currentTimeMillis())
             toast(r.fold({ o -> "${link.computer.name} is going to sleep" + (o.optJSONArray("notes")?.let { a -> if ((0 until a.length()).any { a.getString(it).contains("could not") }) ". It may not wake from the network until Wake-on-LAN is turned on there." else "" } ?: "") }, { friendlyError(it.message, link.computer.name) }))
         }
     }, { confirmSleep = false })

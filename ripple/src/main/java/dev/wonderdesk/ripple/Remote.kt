@@ -125,10 +125,12 @@ class Link(var computer: Computer) {
             attempt = 0
             val via = runCatching { JSONObject(Native.connInfo(h)).optString("via") }.getOrDefault("")
             state.value = LinkState.Connected(via)
+            Store.setSeenAt(Ripple.app, computer.fp, System.currentTimeMillis()); Store.setSleptAt(Ripple.app, computer.fp, 0L)
             refreshInfo(h)
             terminals.values.forEach { it.attach(h) }
             watch(h)
             handle = 0
+            Store.setSeenAt(Ripple.app, computer.fp, System.currentTimeMillis())
             runCatching { Native.close(h) }
             terminals.values.forEach { it.detachStream() }
             if (wanted) state.value = LinkState.Connecting("Connection lost. Reconnecting…", 1)
@@ -345,5 +347,25 @@ class RemoteTerminal(val link: Link, val sessionId: Int, var name: String, val c
     fun type(text: String) {
         val b = text.toByteArray()
         Thread { session.write(b, 0, b.size) }.start()
+    }
+}
+
+/** Why a computer can't be reached, in plain words: asleep (we put it there), or off, asleep or away from the network. */
+object Presence {
+    private fun ago(ms: Long): String { val m = ms / 60_000; return when { m < 1 -> "a moment ago"; m < 60 -> "$m min ago"; m < 48 * 60 -> "${m / 60} h ago"; else -> "${m / 1440} days ago" } }
+    private fun clock(t: Long) = android.text.format.DateFormat.getTimeFormat(Ripple.app).format(java.util.Date(t))
+
+    /** Headline and detail for an offline computer. */
+    fun explain(c: Computer): Pair<String, String> {
+        val slept = Store.sleptAt(Ripple.app, c.fp); val seen = Store.seenAt(Ripple.app, c.fp); val now = System.currentTimeMillis()
+        return when {
+            slept > 0 && now - slept < 24 * 3600_000L -> "${c.name} is asleep" to "Put to sleep from this phone at ${clock(slept)}. Tap Wake while you are on the same network, or press its power button."
+            seen > 0 -> "${c.name} isn't reachable" to "It may be asleep, shut down or off the network. Last seen ${ago(now - seen)}."
+            else -> "${c.name} isn't reachable" to "It may be asleep, shut down or off the network."
+        }
+    }
+    fun short(c: Computer): String {
+        val slept = Store.sleptAt(Ripple.app, c.fp); val seen = Store.seenAt(Ripple.app, c.fp); val now = System.currentTimeMillis()
+        return if (slept > 0 && now - slept < 24 * 3600_000L) "Asleep since ${clock(slept)}" else if (seen > 0) "Not reachable · last seen ${ago(now - seen)}" else "Not reachable"
     }
 }

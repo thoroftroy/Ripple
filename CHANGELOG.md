@@ -1,5 +1,10 @@
 # Ripple changelog
 
+## v0.2.0
+
+- Notepads: write a note in Scribble and Ripple keeps it in any folder you choose on your computer, in both directions, even while Ripple is closed (menu, Notepads). Put a project's notes in the project folder and they are there when you get home
+- Clearer status when a computer can't be reached: "asleep since 14:32" if you put it to sleep from the phone, otherwise "not reachable, last seen 5 min ago", in the list, the title bar and the banner
+
 ## v0.1.21
 
 - The top bar now shows how busy your computer is (processor, memory, graphics, temperature); tap it from the menu for the full picture with network, disk and uptime. Turn it off in Settings

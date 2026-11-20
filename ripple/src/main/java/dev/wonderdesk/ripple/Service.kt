@@ -108,7 +108,20 @@ class RippleService : Service() {
         }
         runCatching { Ripple.active().joinToString { it.computer.name }.ifBlank { null } }.getOrNull()?.let { goForeground(it) }
         watchNetwork()
+        startNoteSync()
         return START_STICKY
+    }
+
+    private var noteSync: Thread? = null
+    /** While Ripple stays connected, notepads shared with Scribble are copied to and from the computer every half minute. */
+    private fun startNoteSync() {
+        if (noteSync?.isAlive == true) return
+        noteSync = Thread {
+            while (!Thread.currentThread().isInterrupted) {
+                runCatching { if (NoteLinks.all(this).isNotEmpty()) NoteLinks.syncAll(this) }
+                try { Thread.sleep(30_000) } catch (_: InterruptedException) { return@Thread }
+            }
+        }.also { it.isDaemon = true; it.start() }
     }
 
     private fun watchNetwork() {
@@ -126,6 +139,7 @@ class RippleService : Service() {
     }
 
     override fun onDestroy() {
+        noteSync?.interrupt()
         callback?.let { runCatching { getSystemService(ConnectivityManager::class.java).unregisterNetworkCallback(it) } }
         super.onDestroy()
     }
