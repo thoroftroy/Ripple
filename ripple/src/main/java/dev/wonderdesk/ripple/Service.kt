@@ -92,6 +92,7 @@ class RippleService : Service() {
             .setContentTitle("Connected to $names").setContentText("Sessions can alert you while Ripple is closed")
             .setContentIntent(open).addAction(Notification.Action.Builder(null, "Disconnect", stop).build()).setOngoing(true).build()
         if (Build.VERSION.SDK_INT >= 34) startForeground(1, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE) else startForeground(1, n)
+        dev.wonderdesk.shared.WonderAssist.post(this, "ripple", "link", "Connected to $names", "Sessions can alert you while Ripple is closed", listOf("Disconnect" to stop), open, ongoing = true)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -139,6 +140,7 @@ class RippleService : Service() {
     }
 
     override fun onDestroy() {
+        runCatching { dev.wonderdesk.shared.WonderAssist.clear(this, "ripple", "link") }
         noteSync?.interrupt()
         callback?.let { runCatching { getSystemService(ConnectivityManager::class.java).unregisterNetworkCallback(it) } }
         super.onDestroy()

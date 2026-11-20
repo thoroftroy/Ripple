@@ -1,5 +1,9 @@
 # Ripple changelog
 
+## v0.2.1
+
+- The connection (Disconnect) also shows as a card on the Wonderdesk Launcher's floating button, when it is in use
+
 ## v0.2.0
 
 - Notepads: write a note in Scribble and Ripple keeps it in any folder you choose on your computer, in both directions, even while Ripple is closed (menu, Notepads). Put a project's notes in the project folder and they are there when you get home
