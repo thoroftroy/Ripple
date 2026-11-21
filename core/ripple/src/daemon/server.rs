@@ -97,6 +97,8 @@ where
         "hello" | "info" => json!({"computer": d.info(), "sessions": d.list_sessions(), "doorbell": doorbell_status(&d)}),
         "stats" => super::stats::stats().await,
         "power" => super::stats::power(req["action"].as_str().unwrap_or("")),
+        // Wake another computer on this network for a phone that is not on it.
+        "wake_others" => super::stats::send_magic(&req["macs"].as_array().map(|a| a.iter().filter_map(|m| m.as_str().map(String::from)).collect::<Vec<_>>()).unwrap_or_default()),
         "clip_set" => {
             let from = if peer.local { "computer" } else { "phone" };
             let added = d.add_clip(req["text"].as_str().unwrap_or("").to_string(), from);

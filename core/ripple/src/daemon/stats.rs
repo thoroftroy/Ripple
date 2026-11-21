@@ -190,33 +190,85 @@ pub fn hardware_addresses() -> Vec<String> {
     wired
 }
 
-/// Makes the wired card (and NetworkManager's profile for it) answer a wake-up packet. Best effort.
+/// True when `ethtool <name>` (readable without root) reports the card will wake on a magic packet.
+fn wol_active(name: &str) -> bool {
+    std::process::Command::new("ethtool").arg(name).output().ok()
+        .map(|o| String::from_utf8_lossy(&o.stdout).lines().any(|l| { let l = l.trim(); l.starts_with("Wake-on:") && l.contains('g') && !l.contains("Supports") }))
+        .unwrap_or(false)
+}
+
+/// Makes the network cards (wired and Wi-Fi) answer a wake-up packet, and applies the setting to the live card right now.
+/// NetworkManager only reads its profile when a link comes up, so without the `reapply` the setting is not in force when the computer sleeps.
 fn arm_wake_on_lan() -> Vec<String> {
     let mut notes = vec![];
     let Ok(dir) = std::fs::read_dir("/sys/class/net") else { return notes };
+    let con = std::process::Command::new("nmcli").args(["-t", "-f", "NAME,DEVICE,TYPE", "connection", "show", "--active"]).output().ok().map(|o| String::from_utf8_lossy(&o.stdout).to_string()).unwrap_or_default();
     for i in dir.flatten() {
         let name = i.file_name().to_string_lossy().to_string();
         let p = i.path();
-        if !p.join("device").exists() || p.join("wireless").exists() {
+        if !p.join("device").exists() {
             continue;
         }
-        // NetworkManager keeps the setting for its profile and applies it when the link comes up; no root needed for the logged-in user.
-        let con = std::process::Command::new("nmcli").args(["-t", "-f", "NAME,DEVICE,TYPE", "connection", "show", "--active"]).output().ok().map(|o| String::from_utf8_lossy(&o.stdout).to_string()).unwrap_or_default();
+        let wireless = p.join("wireless").exists() || name.starts_with("wl");
         let profile = con.lines().find_map(|l| { let f: Vec<&str> = l.split(':').collect(); (f.len() >= 2 && f[1] == name).then(|| f[0].to_string()) });
         let mut armed = false;
-        if let Some(p) = &profile {
-            armed = std::process::Command::new("nmcli").args(["connection", "modify", p, "802-3-ethernet.wake-on-lan", "magic"]).status().map(|s| s.success()).unwrap_or(false);
+        if let Some(pr) = &profile {
+            let key = if wireless { "802-11-wireless.wake-on-wlan" } else { "802-3-ethernet.wake-on-lan" };
+            armed = std::process::Command::new("nmcli").args(["connection", "modify", pr, key, "magic"]).status().map(|s| s.success()).unwrap_or(false);
+            if armed {
+                // Apply to the running card now, without dropping the connection.
+                let _ = std::process::Command::new("nmcli").args(["device", "reapply", &name]).status();
+            }
         }
-        if !armed {
+        if !armed && !wireless {
             armed = std::process::Command::new("ethtool").args(["-s", &name, "wol", "g"]).output().map(|o| o.status.success()).unwrap_or(false);
         }
-        if armed {
-            notes.push(format!("{name}: wake-on-LAN armed"));
+        let kind = if wireless { "Wi-Fi" } else { "wired" };
+        if armed && (wireless || wol_active(&name)) {
+            notes.push(format!("{name} ({kind}): wake-on-LAN armed"));
+        } else if armed {
+            notes.push(format!("{name} ({kind}): wake-on-LAN set, but the card does not report it is on. Turn on Wake-on-LAN (or PCIe/Power On By PCI-E) in the BIOS"));
         } else {
-            notes.push(format!("{name}: could not arm wake-on-LAN. Turn on Wake-on-LAN in the BIOS and run `nmcli connection modify <connection> 802-3-ethernet.wake-on-lan magic` once."));
+            notes.push(format!("{name} ({kind}): could not arm wake-on-LAN. Turn it on in the BIOS and run `nmcli connection modify <connection> 802-3-ethernet.wake-on-lan magic` once."));
         }
     }
     notes
+}
+
+/// Sends a Wake-on-LAN magic packet for each address, on every local network this computer is on. Used so a computer that is awake
+/// can wake another one for a phone that is away from home.
+pub fn send_magic(macs: &[String]) -> Value {
+    let Ok(sock) = std::net::UdpSocket::bind("0.0.0.0:0") else { return json!({"error": "Could not open a network socket"}) };
+    let _ = sock.set_broadcast(true);
+    let mut sent = 0;
+    for mac in macs {
+        let hw: Vec<u8> = mac.split(':').filter_map(|b| u8::from_str_radix(b, 16).ok()).collect();
+        if hw.len() != 6 {
+            continue;
+        }
+        let mut pkt = vec![0xFFu8; 6];
+        for _ in 0..16 {
+            pkt.extend_from_slice(&hw);
+        }
+        for dst in ["255.255.255.255:9", "255.255.255.255:7"] {
+            if sock.send_to(&pkt, dst).is_ok() {
+                sent += 1;
+            }
+        }
+        // Directed broadcast on each subnet this computer is on (read from `ip -4 -o addr`).
+        if let Ok(o) = std::process::Command::new("ip").args(["-4", "-o", "addr"]).output() {
+            for l in String::from_utf8_lossy(&o.stdout).lines() {
+                if let Some(brd) = l.split_whitespace().skip_while(|w| *w != "brd").nth(1) {
+                    for port in [9, 7] {
+                        if sock.send_to(&pkt, format!("{brd}:{port}")).is_ok() {
+                            sent += 1;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    json!({"ok": sent > 0, "sent": sent})
 }
 
 /// Runs a power action after a short delay, so the reply reaches the phone first.

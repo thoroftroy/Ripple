@@ -144,11 +144,33 @@ fun UsageDialog(computerName: String, u: Usage, onDismiss: () -> Unit) {
     )
 }
 
-/** Wake-on-LAN: a magic packet works only on the computer's own network, and only if it supports waking. */
+/**
+ * Wake-on-LAN. A magic packet only travels on the computer's own network, so on the home network the phone sends it directly. Away from home
+ * (or on mobile data) the phone asks any other computer of yours that is awake and connected to send it for it.
+ */
 object Wake {
     fun send(computer: Computer): String {
         val macs = computer.macs
         if (macs.isEmpty()) return "Update Ripple on ${computer.name} and connect once, so this phone can learn how to wake it."
+        val direct = sendDirect(computer, macs)
+        // Ask other connected computers to send it on their network too: this is what makes waking work away from home.
+        var helpers = 0
+        Store.computers(Ripple.app).filter { it.fp != computer.fp }.forEach { other ->
+            val link = Ripple.link(other.fp) ?: return@forEach
+            if (link.state.value is LinkState.Connected) runCatching {
+                val r = link.request(JSONObject().put("op", "wake_others").put("macs", org.json.JSONArray(macs)))
+                if (r.optBoolean("ok")) helpers++
+            }
+        }
+        return when {
+            direct > 0 && helpers > 0 -> "Wake-up sent to ${computer.name}, also from $helpers other computer${if (helpers > 1) "s" else ""}. It can take up to a minute to come back."
+            helpers > 0 -> "Asked $helpers other computer${if (helpers > 1) "s" else ""} on its network to wake ${computer.name}. It can take up to a minute."
+            direct > 0 -> "Wake-up sent to ${computer.name}. It only works on the computer's own network unless another of your computers is awake and connected to send it. It can take up to a minute."
+            else -> "Couldn't send the wake-up. You're not on ${computer.name}'s network, and no other connected computer could send it for you."
+        }
+    }
+
+    private fun sendDirect(computer: Computer, macs: List<String>): Int {
         val targets = linkedSetOf("255.255.255.255")
         computer.addresses.forEach { a ->
             val ip = a.substringBeforeLast(':').trim('[', ']')
@@ -169,8 +191,7 @@ object Wake {
                 }
             }
         }
-        return if (sent > 0) "Wake-up sent to ${computer.name}. It can take up to a minute to come back."
-        else "Couldn't send the wake-up. Are you on the same network as ${computer.name}?"
+        return sent
     }
 }
 

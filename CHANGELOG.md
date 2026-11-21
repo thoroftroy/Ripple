@@ -1,5 +1,11 @@
 # Ripple changelog
 
+## v0.3.2
+
+- Wake: the computer now applies wake-on-LAN to the live network card before it sleeps (wired and Wi-Fi) and reports whether it is really on
+- Waking away from home: the phone asks any other awake, connected computer of yours to send the wake-up on its network
+- Fixed a gap above the keyboard in screens with a bottom tab bar: the tab bar now steps aside while you type, so you can see what you are writing
+
 ## v0.3.1
 
 - Fixed an ended session leaving its tab behind and the Close button doing nothing: ending a session (menu, tab menu) or pressing Close on one that finished now closes its tab at once, selects another session, and tells the computer to drop it
