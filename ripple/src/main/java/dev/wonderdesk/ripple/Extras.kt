@@ -40,11 +40,11 @@ fun RippleSettings() {
     var editing by remember { mutableStateOf<Int?>(null) }
 
     Panel(title = "Features", footer = "Choose what shows up. Changes apply the next time you open a computer.") {
-        SwitchRow("Share the clipboard with the computer", clipSync, { clipSync = it; Store.setClipSync(context, it) }, subtitle = "Text you copy on either side can be pasted on the other, with a history list", icon = WonderIcons.ContentPaste)
+        SwitchRow("Share the clipboard with the computer", clipSync, { clipSync = it; Store.setClipSync(context, it) }, subtitle = "Text you copy on either side can be pasted on the other, with a history list", icon = WonderIcons.ContentPaste, help = "Text you copy on the phone can be pasted on the computer, and the other way round, while Ripple is open.")
         PanelDivider()
         SwitchRow("Files button", showFiles, { showFiles = it; Store.setShowFiles(context, it) }, subtitle = "Browse and move files in the top bar", icon = WonderIcons.Folder)
         PanelDivider()
-        SwitchRow("Sleep, lock and wake", showPower, { showPower = it; Store.setShowPower(context, it) }, subtitle = "Power actions in the menu", icon = WonderIcons.Bolt)
+        SwitchRow("Sleep, lock and wake", showPower, { showPower = it; Store.setShowPower(context, it) }, subtitle = "Power actions in the menu", icon = WonderIcons.Bolt, help = "Adds Sleep, Lock and Wake to the menu so you can control the computer's power from here.")
         PanelDivider()
         SwitchRow("Session tabs", showTabs, { showTabs = it; Store.setShowSessionTabs(context, it) }, subtitle = "The row of tabs above the terminal", icon = WonderIcons.Tune)
     }
@@ -53,10 +53,10 @@ fun RippleSettings() {
             subtitle = "Processor, memory, graphics and temperature of the computer. Tap it for more.", icon = WonderIcons.Tune)
         PanelDivider()
         SwitchRow("Stay connected in the background", stay, { stay = it; Store.setStayConnected(context, it) },
-            subtitle = "Keeps your computer's sessions one tap away and lets them alert you. Uses a little battery and data.", icon = WonderIcons.Sync)
+            subtitle = "Keeps your computer's sessions one tap away and lets them alert you. Uses a little battery and data.", icon = WonderIcons.Sync, help = "Keeps the link to your computer alive while Ripple is not on screen, so terminals and alerts keep working. Uses a little battery.")
         PanelDivider()
         SwitchRow("Session alerts", alerts, { alerts = it; Store.setAlerts(context, it) },
-            subtitle = "When a session rings the bell, sends a message, or goes quiet after working (a job finished, or a program is waiting for you)", icon = WonderIcons.Notifications)
+            subtitle = "When a session rings the bell, sends a message, or goes quiet after working (a job finished, or a program is waiting for you)", icon = WonderIcons.Notifications, help = "Tells you when a long command finishes or a session needs your attention.")
     }
     Panel(title = "Terminal") {
         ListRow("Colours", subtitle = if (scheme == "auto") "Match my look" else Schemes.all[scheme]?.label, icon = WonderIcons.Palette)
@@ -72,7 +72,7 @@ fun RippleSettings() {
             }
         })
         PanelDivider()
-        SwitchRow("Extra keys row", keys, { keys = it; Store.setExtraKeys(context, it) }, subtitle = "Esc, Tab, Ctrl, Alt, arrows and more above the keyboard", icon = WonderIcons.Tune)
+        SwitchRow("Extra keys row", keys, { keys = it; Store.setExtraKeys(context, it) }, subtitle = "Esc, Tab, Ctrl, Alt, arrows and more above the keyboard", icon = WonderIcons.Tune, help = "A row above the keyboard with Ctrl, Esc, Tab and arrows that phone keyboards don't have.")
         PanelDivider()
         var suggestions by remember { mutableStateOf(Store.keyboardSuggestions(context)) }
         var autoSug by remember { mutableStateOf(Store.autoSuggestions(context)) }
@@ -84,7 +84,7 @@ fun RippleSettings() {
         PanelDivider()
         SwitchRow("Vibrate on key press", vibrate, { vibrate = it; Store.setVibrateKeys(context, it) }, icon = WonderIcons.TouchApp)
         PanelDivider()
-        SwitchRow("Keep the screen on", screenOn, { screenOn = it; Store.setKeepScreenOn(context, it) }, subtitle = "While a terminal is open", icon = WonderIcons.WbSunny)
+        SwitchRow("Keep the screen on", screenOn, { screenOn = it; Store.setKeepScreenOn(context, it) }, subtitle = "While a terminal is open", icon = WonderIcons.WbSunny, help = "Stops the phone's screen sleeping while a terminal is open.")
         PanelDivider()
         var bell by remember { mutableStateOf(Store.bellVibrate(context)) }
         SwitchRow("Vibrate on the terminal bell", bell, { bell = it; Store.setBellVibrate(context, it) }, subtitle = "When a program rings the bell, like a finished build", icon = WonderIcons.Notifications)

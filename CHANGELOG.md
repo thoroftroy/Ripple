@@ -1,5 +1,11 @@
 # Ripple changelog
 
+## v0.4.0
+
+- Eco mode: the computer stays on and reachable but with the screen off and low power, and Leave eco mode brings it back
+- Every app window now has the animated scene behind it, in the app's own colour (for example orange water in Abacus, green in Pulse, purple in Scribble), following your Aqua, Bliss or Super look and the real sunrise and sunset. Motion Reduced shows a still picture and Off turns it off
+- Help buttons (?) explain the more confusing settings
+
 ## v0.3.2
 
 - Wake: the computer now applies wake-on-LAN to the live network card before it sleeps (wired and Wi-Fi) and reports whether it is really on

@@ -280,6 +280,18 @@ fun RemoteScreen(fp: String, startSession: Int, open: (Screen) -> Unit) {
                     toast(r.fold({ "Locked ${link.computer.name}" }, { friendlyError(it.message, link.computer.name) }))
                 }
             } else null,
+            if (connected && showPower) WonderMenuItem("Eco mode (stay reachable, use less power)", WonderIcons.Bedtime) {
+                scope.launch {
+                    val r = withContext(Dispatchers.IO) { link.ask(JSONObject().put("op", "power").put("action", "eco")) }
+                    toast(r.fold({ "${link.computer.name} is in eco mode: screen off, low power, still reachable. Use “Leave eco mode” to go back." }, { friendlyError(it.message, link.computer.name) }))
+                }
+            } else null,
+            if (connected && showPower) WonderMenuItem("Leave eco mode", WonderIcons.Bolt) {
+                scope.launch {
+                    val r = withContext(Dispatchers.IO) { link.ask(JSONObject().put("op", "power").put("action", "eco_off")) }
+                    toast(r.fold({ "${link.computer.name} is back to normal power" }, { friendlyError(it.message, link.computer.name) }))
+                }
+            } else null,
             if (!connected && showPower) WonderMenuItem("Wake the computer", WonderIcons.Bolt) {
                 scope.launch { toast(withContext(Dispatchers.IO) { Wake.send(link.computer) }) }
             } else null,

@@ -277,6 +277,10 @@ pub fn power(action: &str) -> Value {
         "sleep" | "suspend" => ("systemctl", vec!["suspend"]),
         "lock" => ("loginctl", vec!["lock-session"]),
         "screen_off" => ("sh", vec!["-c", "loginctl lock-session; sleep 1; (xset dpms force off || true) 2>/dev/null"]),
+        // Eco mode: the computer stays on and reachable (so Ripple, files and sessions keep working) but draws far less power:
+        // power-saver profile, screen off, brightness at the minimum. "eco_off" puts it back.
+        "eco" => ("sh", vec!["-c", "powerprofilesctl set power-saver 2>/dev/null; loginctl lock-session; sleep 1; (brightnessctl set 1% >/dev/null 2>&1 || true); (xset dpms force off || true) 2>/dev/null"]),
+        "eco_off" => ("sh", vec!["-c", "powerprofilesctl set balanced 2>/dev/null; (brightnessctl set 100% >/dev/null 2>&1 || true); (xset dpms force on || true) 2>/dev/null"]),
         _ => return json!({"error": "Unknown power action"}),
     };
     let notes = if matches!(action, "sleep" | "suspend") { arm_wake_on_lan() } else { vec![] };
