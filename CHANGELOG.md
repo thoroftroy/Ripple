@@ -1,5 +1,11 @@
 # Ripple changelog
 
+## v0.5.0
+
+- New Power and wake screen (the bolt button): every computer's state at a glance, Wake, Sleep, Eco, Lock, Restart and Shut down, and schedules that wake or sleep a computer at set times, kept on the phone so they work wherever you are
+- Waking away from home goes through another awake computer of yours; the computer side (restart, shut down, eco mode, wake relay) is in Ripple for Linux 0.1.22, attached to this release
+- At night the animated background gets a stronger wash, so text stays easy to read on dark scenes
+
 ## v0.4.1
 
 - Each app's animated scene now has its own drifting symbols (maths signs in Abacus, notes in Echo, arrows in Wayfinder and so on), and the scene is a little clearer while text stays easy to read

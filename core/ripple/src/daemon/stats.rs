@@ -276,6 +276,8 @@ pub fn power(action: &str) -> Value {
     let (prog, args): (&str, Vec<&str>) = match action {
         "sleep" | "suspend" => ("systemctl", vec!["suspend"]),
         "lock" => ("loginctl", vec!["lock-session"]),
+        "reboot" | "restart" => ("systemctl", vec!["reboot"]),
+        "poweroff" | "shutdown" => ("systemctl", vec!["poweroff"]),
         "screen_off" => ("sh", vec!["-c", "loginctl lock-session; sleep 1; (xset dpms force off || true) 2>/dev/null"]),
         // Eco mode: the computer stays on and reachable (so Ripple, files and sessions keep working) but draws far less power:
         // power-saver profile, screen off, brightness at the minimum. "eco_off" puts it back.
@@ -283,7 +285,7 @@ pub fn power(action: &str) -> Value {
         "eco_off" => ("sh", vec!["-c", "powerprofilesctl set balanced 2>/dev/null; (brightnessctl set 100% >/dev/null 2>&1 || true); (xset dpms force on || true) 2>/dev/null"]),
         _ => return json!({"error": "Unknown power action"}),
     };
-    let notes = if matches!(action, "sleep" | "suspend") { arm_wake_on_lan() } else { vec![] };
+    let notes = if matches!(action, "sleep" | "suspend" | "poweroff" | "shutdown") { arm_wake_on_lan() } else { vec![] };
     let prog = prog.to_string();
     let args: Vec<String> = args.into_iter().map(String::from).collect();
     std::thread::spawn(move || {

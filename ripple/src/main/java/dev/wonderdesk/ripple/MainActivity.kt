@@ -52,6 +52,7 @@ sealed class Screen {
     data class Files(val fp: String, val path: String = "") : Screen()
     data class Notepads(val fp: String) : Screen()
     data object Phone : Screen()
+    data object Power : Screen()
 }
 
 class MainActivity : WonderActivity() {
@@ -123,6 +124,7 @@ class MainActivity : WonderActivity() {
             is Screen.Files -> FilesScreen(s.fp, s.path, onBack = { screen = Screen.Remote(s.fp) })
             is Screen.Notepads -> NotepadsScreen(s.fp, onBack = { screen = Screen.Remote(s.fp) })
             Screen.Phone -> PhoneShellScreen(onBack = { screen = Screen.Home })
+            Screen.Power -> PowerManagerScreen(onBack = { screen = Screen.Home })
         }
     }
 
@@ -145,7 +147,7 @@ fun HomeScreen(open: (Screen) -> Unit) {
     WonderApp(
         appName = "Ripple",
         about = "Your computer's terminal on your phone: run programs there, keep them going when you disconnect, and pick up from anywhere. Files move both ways. Everything connects directly between your own devices.",
-        actions = { ToolbarButton(WonderIcons.Add, "Add a computer", { open(Screen.Pair()) }) },
+        actions = { if (computers.isNotEmpty()) ToolbarButton(WonderIcons.Bolt, "Power and wake", { open(Screen.Power) }); ToolbarButton(WonderIcons.Add, "Add a computer", { open(Screen.Pair()) }) },
         settings = { RippleSettings() },
     ) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {

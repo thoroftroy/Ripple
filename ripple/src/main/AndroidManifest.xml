@@ -26,6 +26,8 @@
         <package android:name="dev.wonderdesk.scribble" /><package android:name="dev.wonderdesk.timepiece" /><package android:name="dev.wonderdesk.vault" />
         <package android:name="dev.wonderdesk.wayfinder" /><package android:name="dev.wonderdesk.echo" /><package android:name="com.blissplayer.app" />
     </queries>
+        <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <application android:enableOnBackInvokedCallback="true" android:label="Ripple">
         <activity android:name=".MainActivity" android:exported="true" android:resizeableActivity="true" android:launchMode="singleTask"
             android:windowSoftInputMode="adjustResize" android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation|uiMode|density">
@@ -43,6 +45,8 @@
             <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="Keeps a live terminal connection to the user's own computer so running sessions can alert them" />
         </service>
         <receiver android:name=".ActionReceiver" android:exported="false" />
+        <receiver android:name=".PowerAlarmReceiver" android:exported="false" />
+        <receiver android:name=".PowerBootReceiver" android:exported="true"><intent-filter><action android:name="android.intent.action.BOOT_COMPLETED" /><action android:name="android.intent.action.MY_PACKAGE_REPLACED" /></intent-filter></receiver>
         <receiver android:name=".AssistActionReceiver" android:exported="false" />
         <receiver android:name=".AssistCommandReceiver" android:exported="true" android:permission="dev.wonderdesk.ripple.QUICK"><intent-filter><action android:name="dev.wonderdesk.ripple.CMD_WAKE" /></intent-filter></receiver>
         <receiver android:name=".AssistRefreshReceiver" android:exported="true"><intent-filter><action android:name="dev.wonderdesk.assist.REFRESH" /></intent-filter></receiver>

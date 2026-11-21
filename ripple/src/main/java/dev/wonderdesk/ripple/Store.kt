@@ -71,6 +71,8 @@ object Store {
     /** When this phone last put a computer to sleep, and when a computer was last reachable. Used to say why it is offline. */
     fun sleptAt(c: Context, fp: String) = prefs(c).getLong("slept_$fp", 0L)
     fun setSleptAt(c: Context, fp: String, t: Long) = prefs(c).edit().putLong("slept_$fp", t).apply()
+    fun poweredOffAt(c: Context, fp: String) = prefs(c).getLong("off_$fp", 0L)
+    fun setPoweredOffAt(c: Context, fp: String, t: Long) = prefs(c).edit().putLong("off_$fp", t).apply()
     fun seenAt(c: Context, fp: String) = prefs(c).getLong("seen_$fp", 0L)
     fun setSeenAt(c: Context, fp: String, t: Long) = prefs(c).edit().putLong("seen_$fp", t).apply()
     /** Which computer and folder the Launcher's quick Ripple note goes to. Empty: the first computer, its Notes folder. */
