@@ -130,6 +130,20 @@ class LinkProvider : ContentProvider() {
         val path = absPath(uri.getQueryParameter("path") ?: throw FileNotFoundException("no path"))
         val ctx = context!!
         val h = handle(f)
+        // A small preview made by the computer (a few kilobytes instead of the whole picture): ?thumb=<longest side in pixels>.
+        // A computer that hasn't been updated yet doesn't know the request, so this throws and the caller falls back to the full file.
+        val thumb = uri.getQueryParameter("thumb")?.toIntOrNull()
+        if (thumb != null && mode == "r") {
+            val r = request(f, JSONObject().put("op", "thumb").put("path", path).put("size", thumb))
+            r.optString("error").takeIf { it.isNotEmpty() }?.let { throw FileNotFoundException(it) }
+            val bytes = android.util.Base64.decode(r.optString("jpeg"), android.util.Base64.DEFAULT)
+            if (bytes.isEmpty()) throw FileNotFoundException("No preview")
+            val pipe = ParcelFileDescriptor.createPipe()
+            Thread {
+                try { ParcelFileDescriptor.AutoCloseOutputStream(pipe[1]).use { it.write(bytes) } } catch (_: Exception) { runCatching { pipe[1].close() } }
+            }.start()
+            return pipe[0]
+        }
         if (mode == "r") {
             val st = request(f, JSONObject().put("op", "stat").put("path", path))
             st.optString("error").takeIf { it.isNotEmpty() }?.let { throw FileNotFoundException(it) }

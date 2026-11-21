@@ -215,7 +215,7 @@ where
             let _ = d.events.send(json!({"event": "attention", "session": req["session"].as_u64().unwrap_or(0), "name": req["title"].as_str().unwrap_or("Ripple"), "text": req["text"].as_str().unwrap_or(""), "kind": "message"}));
             json!({"ok": true})
         }
-        "ls" | "stat" | "mkdir" | "rm" | "mv" | "home" | "du" => match super::files::simple(&d, &op, &req).await {
+        "ls" | "stat" | "mkdir" | "rm" | "mv" | "home" | "du" | "thumb" => match super::files::simple(&d, &op, &req).await {
             Ok(v) => v,
             Err(e) => err(e.to_string()),
         },
@@ -399,9 +399,17 @@ where
         },
     };
     let mut mine = (cols, rows);
+    // Several clients can watch one terminal (the phone and the desktop window). The terminal follows the size of the one you are using,
+    // the last to attach or type; the others' window changes (a keyboard sliding up, a window being dragged) are noted but don't resize it,
+    // and a burst of changes is settled for a moment before it takes effect. Without this the size flipped between them and programs
+    // like opencode kept redrawing at the wrong size.
+    static NEXT_CLIENT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+    let me = NEXT_CLIENT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     if !req["keep_size"].as_bool().unwrap_or(false) {
+        sess.set_owner(me);
         sess.resize(cols, rows);
     }
+    let mut settle: Option<tokio::time::Instant> = None;
     let (snap, mut out) = sess.subscribe_with_snapshot(history);
     proto::write_json(&mut w, &json!({"ok": true, "id": sess.id, "session": sess.summary()})).await?;
     proto::write_data(&mut w, &snap).await?;
@@ -438,8 +446,14 @@ where
                     }
                     Err(_) => break,
                 },
+                _ = async { match settle { Some(t) => tokio::time::sleep_until(t).await, None => std::future::pending().await } } => {
+                    settle = None;
+                    if sess.owner() == me && sess.size() != mine { sess.resize(mine.0, mine.1); }
+                }
                 f = input.recv() => match f {
                     Some(Frame::Data(bytes)) => {
+                        // Typing makes this client the one the terminal follows.
+                        if sess.owner() != me { sess.set_owner(me); }
                         if sess.size() != mine { sess.resize(mine.0, mine.1); }
                         sess.write(&bytes).await?;
                     }
@@ -447,7 +461,8 @@ where
                         if let Some(sz) = v.get("resize").and_then(|s| s.as_array()) {
                             if sz.len() == 2 {
                                 mine = (sz[0].as_u64().unwrap_or(80) as u16, sz[1].as_u64().unwrap_or(24) as u16);
-                                sess.resize(mine.0, mine.1);
+                                // Only the client being used changes the terminal's size, and only once its size stops changing.
+                                if sess.owner() == 0 || sess.owner() == me { if sess.owner() == 0 { sess.set_owner(me); } settle = Some(tokio::time::Instant::now() + std::time::Duration::from_millis(140)); }
                             }
                         } else if v["redraw"].as_bool() == Some(true) {
                             let snap = sess.snapshot(v["history"].as_bool().unwrap_or(false));
@@ -465,6 +480,7 @@ where
     }
     .await;
     drop(out);
+    if sess.owner() == me { sess.set_owner(0); }   // when the client you were using leaves, the next one can set the size
     d.sessions_changed();
     result
 }

@@ -1,5 +1,10 @@
 # Ripple changelog
 
+## v0.5.4
+
+- Picture and video previews from a computer are made by the computer itself and arrive in passes: a tiny one almost at once, then sharper ones (needs the new Ripple 0.1.23 on the computer; older computers work as before)
+- The terminal no longer jumps between sizes when the phone and the desktop window are both open: it follows the window you are using, and a burst of size changes (a keyboard sliding up, a window being dragged) settles before it takes effect
+
 ## v0.5.3
 
 - The symbols drifting in the background are smaller and fainter so they no longer crowd text; selected segments and chips are readable in every look (including Super); the warning banner at the top has a solid backing so its text is easy to read

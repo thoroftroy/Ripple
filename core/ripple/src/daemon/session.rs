@@ -55,6 +55,8 @@ struct Inner {
 }
 
 pub struct Session {
+    /// The attached client (phone or desktop window) whose window size the terminal follows: whoever typed or attached last.
+    owner: std::sync::atomic::AtomicU64,
     pub id: u32,
     pub name: Mutex<String>,
     pub created: u64,
@@ -138,6 +140,7 @@ impl Session {
         let (tx, _) = broadcast::channel(2048);
         let (ended, _) = watch::channel(None);
         let sess = Arc::new(Session {
+            owner: std::sync::atomic::AtomicU64::new(0),
             id,
             name: Mutex::new(s.name),
             created: crate::util::now_secs(),
@@ -366,6 +369,14 @@ impl Session {
     pub fn peek(&self) -> String {
         let inner = self.inner.lock().unwrap();
         inner.parser.screen().contents()
+    }
+
+    pub fn owner(&self) -> u64 {
+        self.owner.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    pub fn set_owner(&self, client: u64) {
+        self.owner.store(client, std::sync::atomic::Ordering::Relaxed);
     }
 
     pub fn size(&self) -> (u16, u16) {

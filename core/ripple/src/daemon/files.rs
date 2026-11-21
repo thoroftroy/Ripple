@@ -83,6 +83,12 @@ pub async fn simple(d: &Arc<Daemon>, op: &str, req: &Value) -> Result<Value> {
             tokio::fs::rename(&path, &to).await?;
             Ok(json!({"ok": true, "path": to.to_string_lossy()}))
         }
+        "thumb" => {
+            // A small preview of a picture or video, made here so the phone only has to fetch a few kilobytes (tiny first, then sharper).
+            let size = req["size"].as_u64().unwrap_or(256).clamp(16, 2048) as u32;
+            let p = path.clone();
+            tokio::task::spawn_blocking(move || thumb(&p, size)).await?
+        }
         "du" => {
             let p = path.clone();
             let total = tokio::task::spawn_blocking(move || dir_size(&p)).await?;
@@ -90,6 +96,89 @@ pub async fn simple(d: &Arc<Daemon>, op: &str, req: &Value) -> Result<Value> {
         }
         _ => bail!("unknown"),
     }
+}
+
+const VIDEO_EXT: &[&str] = &["mp4", "mkv", "mov", "webm", "avi", "m4v", "3gp", "flv", "wmv", "mpg", "mpeg", "ts"];
+const IMAGE_EXT: &[&str] = &["jpg", "jpeg", "png", "webp", "gif"];
+
+fn thumb_cache_file(p: &Path, size: u32, meta: &std::fs::Metadata) -> Option<PathBuf> {
+    use sha2::{Digest, Sha256};
+    let home = std::env::var("HOME").ok()?;
+    let dir = PathBuf::from(home).join(".cache/ripple/thumbs");
+    std::fs::create_dir_all(&dir).ok()?;
+    let mut h = Sha256::new();
+    h.update(p.to_string_lossy().as_bytes());
+    h.update(meta.len().to_le_bytes());
+    h.update(meta.mtime().to_le_bytes());
+    h.update(size.to_le_bytes());
+    Some(dir.join(format!("{}.jpg", hex::encode(&h.finalize()[..12]))))
+}
+
+/// Makes (or reads from the cache) a JPEG whose longest side is `size`, and returns it base64-encoded with its dimensions.
+fn thumb(p: &Path, size: u32) -> Result<Value> {
+    use base64::Engine;
+    let meta = std::fs::metadata(p).map_err(|e| anyhow!("Can't open {}: {}", p.display(), e))?;
+    if meta.is_dir() {
+        bail!("That's a folder");
+    }
+    let ext = p.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
+    let cache = thumb_cache_file(p, size, &meta);
+    let jpeg: Vec<u8> = if let Some(bytes) = cache.as_ref().and_then(|c| std::fs::read(c).ok()) {
+        bytes
+    } else {
+        let made = if IMAGE_EXT.contains(&ext.as_str()) {
+            image_thumb(p, size)?
+        } else if VIDEO_EXT.contains(&ext.as_str()) {
+            video_thumb(p, size)?
+        } else {
+            bail!("No preview for this kind of file");
+        };
+        if let Some(c) = &cache {
+            let tmp = c.with_extension("tmp");
+            if std::fs::write(&tmp, &made).is_ok() {
+                let _ = std::fs::rename(&tmp, c);
+            }
+        }
+        made
+    };
+    let (w, h) = image::ImageReader::new(std::io::Cursor::new(&jpeg)).with_guessed_format().ok().and_then(|r| r.into_dimensions().ok()).unwrap_or((0, 0));
+    Ok(json!({"w": w, "h": h, "size": meta.len(), "jpeg": base64::engine::general_purpose::STANDARD.encode(&jpeg)}))
+}
+
+fn encode_jpeg(img: &image::DynamicImage, size: u32) -> Result<Vec<u8>> {
+    let small = if img.width().max(img.height()) > size { img.thumbnail(size, size) } else { img.clone() };
+    let rgb = small.to_rgb8();
+    let quality = if size <= 96 { 55 } else if size <= 400 { 70 } else { 80 };
+    let mut out = Vec::new();
+    image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, quality).encode_image(&rgb)?;
+    Ok(out)
+}
+
+fn image_thumb(p: &Path, size: u32) -> Result<Vec<u8>> {
+    use image::ImageDecoder;
+    let mut decoder = image::ImageReader::open(p)?.with_guessed_format()?.into_decoder()?;
+    let orientation = decoder.orientation().ok();
+    let mut img = image::DynamicImage::from_decoder(decoder)?;
+    if let Some(o) = orientation {
+        img.apply_orientation(o);
+    }
+    encode_jpeg(&img, size)
+}
+
+/// A frame from a video, if ffmpeg is installed.
+fn video_thumb(p: &Path, size: u32) -> Result<Vec<u8>> {
+    for seek in ["1", "0"] {
+        let out = std::process::Command::new("ffmpeg")
+            .args(["-v", "error", "-ss", seek, "-i"]).arg(p)
+            .args(["-frames:v", "1", "-vf", &format!("scale='min({size},iw)':-2"), "-q:v", "5", "-f", "image2pipe", "-vcodec", "mjpeg", "-"])
+            .stdin(std::process::Stdio::null()).stderr(std::process::Stdio::null()).output();
+        if let Ok(o) = out {
+            if o.status.success() && !o.stdout.is_empty() {
+                return Ok(o.stdout);
+            }
+        }
+    }
+    bail!("No preview (ffmpeg isn't installed here, or the video can't be read)")
 }
 
 fn dir_size(p: &Path) -> u64 {
@@ -240,4 +329,46 @@ pub async fn offer(d: &Arc<Daemon>, path: &str) -> Result<Value> {
     let name = dest.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
     let _ = d.events.send(json!({"event": "file_offer", "path": dest.to_string_lossy(), "name": name, "size": meta.len()}));
     Ok(json!({"ok": true, "path": dest.to_string_lossy(), "name": name, "size": meta.len()}))
+}
+
+#[cfg(test)]
+mod thumb_tests {
+    use super::*;
+
+    #[test]
+    fn makes_small_jpegs_of_pictures_and_rejects_other_files() {
+        let dir = std::env::temp_dir().join(format!("ripple-thumb-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let png = dir.join("pic.png");
+        let img = image::RgbImage::from_fn(1200, 800, |x, y| image::Rgb([(x % 256) as u8, (y % 256) as u8, 128]));
+        img.save(&png).unwrap();
+        let small = thumb(&png, 48).unwrap();
+        assert!(small["w"].as_u64().unwrap() <= 48 && small["h"].as_u64().unwrap() <= 48);
+        let big = thumb(&png, 400).unwrap();
+        assert_eq!(big["w"].as_u64().unwrap(), 400);
+        assert!(big["jpeg"].as_str().unwrap().len() > small["jpeg"].as_str().unwrap().len());
+        let again = thumb(&png, 400).unwrap(); // second call comes from the cache and is identical
+        assert_eq!(again["jpeg"], big["jpeg"]);
+        let txt = dir.join("a.txt");
+        std::fs::write(&txt, "hi").unwrap();
+        assert!(thumb(&txt, 48).is_err());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+#[cfg(test)]
+mod video_thumb_tests {
+    use super::*;
+    #[test]
+    fn grabs_a_frame_when_ffmpeg_exists() {
+        if std::process::Command::new("ffmpeg").arg("-version").output().is_err() { return; }
+        let dir = std::env::temp_dir().join(format!("ripple-vthumb-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let v = dir.join("clip.mp4");
+        let ok = std::process::Command::new("ffmpeg").args(["-v", "error", "-y", "-f", "lavfi", "-i", "testsrc=duration=2:size=320x180:rate=10", "-pix_fmt", "yuv420p"]).arg(&v).status().map(|s| s.success()).unwrap_or(false);
+        if !ok { return; }
+        let t = thumb(&v, 96).unwrap();
+        assert!(t["w"].as_u64().unwrap() <= 96 && t["w"].as_u64().unwrap() > 0);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

@@ -4,7 +4,6 @@
     "wayfinder": "0.2.4",
     "packrat": "0.2.5",
     "memories": "0.2.3",
-    "cinema": "0.2.3",
     "melody": "0.2.4",
     "pages": "0.2.3",
     "gateway": "0.2.2",
@@ -31,7 +30,7 @@
     "checkup": "0.2.0",
     "fetch": "0.2.0",
     "launcher": "0.2.8",
-    "ripple": "0.5.3",
+    "ripple": "0.5.4",
     "echo": "0.1.0"
   },
   "tools": {
