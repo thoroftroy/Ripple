@@ -1,5 +1,9 @@
 # Ripple changelog
 
+## v0.5.1
+
+- Videos opened from a computer's files play in Memories (Cinema has been merged into it)
+
 ## v0.5.0
 
 - New Power and wake screen (the bolt button): every computer's state at a glance, Wake, Sleep, Eco, Lock, Restart and Shut down, and schedules that wake or sleep a computer at set times, kept on the phone so they work wherever you are

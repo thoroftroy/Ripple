@@ -20,7 +20,7 @@
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <queries>
         <package android:name="dev.wonderdesk.abacus" /><package android:name="dev.wonderdesk.apphub" /><package android:name="dev.wonderdesk.beacon" />
-        <package android:name="dev.wonderdesk.chronicle" /><package android:name="dev.wonderdesk.cinema" /><package android:name="dev.wonderdesk.controlroom" />
+        <package android:name="dev.wonderdesk.chronicle" /><package android:name="dev.wonderdesk.controlroom" />
         <package android:name="dev.wonderdesk.launcher" /><package android:name="dev.wonderdesk.memories" /><package android:name="dev.wonderdesk.packrat" />
         <package android:name="dev.wonderdesk.pages" /><package android:name="dev.wonderdesk.pulse" /><package android:name="dev.wonderdesk.safekeeper" />
         <package android:name="dev.wonderdesk.scribble" /><package android:name="dev.wonderdesk.timepiece" /><package android:name="dev.wonderdesk.vault" />

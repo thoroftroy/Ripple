@@ -91,10 +91,10 @@ fun FilesScreen(fp: String, startPath: String, onBack: () -> Unit) {
     }
 
     fun open(e: RemoteEntry, share: Boolean) {
-        // Videos and music open in Cinema or Bliss Player right away and are read as they play, instead of downloading first.
+        // Videos and music open in Memories or Bliss Player right away and are read as they play, instead of downloading first.
         if (!share) {
             val t = MimeTypeMap.getSingleton().getMimeTypeFromExtension(e.name.substringAfterLast('.', "").lowercase()) ?: ""
-            val player = when { t.startsWith("video/") -> "dev.wonderdesk.cinema"; t.startsWith("audio/") -> "com.blissplayer.music.debug"; else -> null }
+            val player = when { t.startsWith("video/") -> "dev.wonderdesk.memories"; t.startsWith("audio/") -> "com.blissplayer.music.debug"; else -> null }
             if (player != null) {
                 val live = android.net.Uri.parse("content://dev.wonderdesk.ripple.link").buildUpon().appendPath("file").appendPath(fp).appendQueryParameter("path", child(e))
                     .appendQueryParameter("name", e.name).appendQueryParameter("v", "${e.size}-${e.mtime}").build()
