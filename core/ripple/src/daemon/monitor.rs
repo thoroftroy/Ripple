@@ -30,30 +30,37 @@ fn claude_state(text: &str, program: &str) -> ClaudeState {
         return ClaudeState::Unknown;
     }
     let lines: Vec<&str> = text.lines().collect();
-    let footer = lines[lines.len().saturating_sub(14)..].join(" ").to_lowercase();
+    let visible = &lines[lines.len().saturating_sub(14)..];
+    let footer = visible.join(" ").to_lowercase();
     let footer = footer.split_whitespace().collect::<Vec<_>>().join(" ");
+    // Claude often leaves old limit messages in the transcript. Prefer the
+    // live status area below the last prompt separator when one is present.
+    let status_start = visible.iter().rposition(|line| line.chars().filter(|c| *c == '─').count() >= 5)
+        .map(|index| index + 1).unwrap_or(0);
+    let status = visible[status_start..].join(" ").to_lowercase();
+    let status = status.split_whitespace().collect::<Vec<_>>().join(" ");
     // An active automatic wait takes priority over a generic active indicator.
-    if (footer.contains("continuing automatically at ") || footer.contains("continuing automatically in ")
-        || (footer.contains("continuing shortly") && footer.contains("esc to cancel")))
-        && (footer.contains("limit") || footer.contains("esc to cancel"))
+    if (status.contains("continuing automatically at ") || status.contains("continuing automatically in ")
+        || (status.contains("continuing shortly") && status.contains("esc to cancel")))
+        && (status.contains("limit") || status.contains("esc to cancel"))
     {
         return ClaudeState::LimitAuto;
     }
-    if footer.contains("esc to interrupt") {
+    if status.contains("esc to interrupt") {
         return ClaudeState::Working;
     }
-    if footer.contains("press enter to continue") {
+    if status.contains("press enter to continue") {
         return ClaudeState::Unknown;
     }
-    if footer.contains("hit your") && footer.contains("limit")
-        || footer.contains("limit reached") || footer.contains("usage limit")
-        && (footer.contains("reset") || footer.contains("reached"))
+    if status.contains("hit your") && status.contains("limit")
+        || status.contains("limit reached") || status.contains("usage limit")
+        && (status.contains("reset") || status.contains("reached"))
     {
         return ClaudeState::Limit;
     }
     // Do not treat dialogs, interruptions, failures or running subagents as a
     // finished response, even when an input prompt is visible behind them.
-    if (footer.contains('←') && footer.contains("agent"))
+    if (status.contains('←') && status.contains("agent"))
         || ["permission", "approve", "do you want to", "press enter to continue",
         "interrupted", "error", "failed", "esc to cancel", "retrying",
         "agent running", "agents running"]
@@ -288,6 +295,7 @@ mod tests {
         assert_eq!(claude_state("You've hit your weekly limit · resets Monday", "claude"), ClaudeState::Limit);
         assert_eq!(claude_state("You've hit your monthly spend limit", "claude"), ClaudeState::Limit);
         assert_eq!(claude_state("Your usage limit has reset · Press enter to continue", "claude"), ClaudeState::Unknown);
+        assert_eq!(claude_state("Usage limit reached · set to continue automatically at 3pm\n────────\n❯\n────────\n⏵⏵ auto mode on (shift+tab to cycle)", "claude"), ClaudeState::Ready);
         assert_eq!(claude_state(&format!("Error: request failed\n{ready}"), "claude"), ClaudeState::Unknown);
     }
 }

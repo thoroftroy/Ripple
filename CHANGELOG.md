@@ -1,5 +1,14 @@
 # Ripple changelog
 
+## v0.6.2
+
+- Faster starts for large pictures and videos: the phone fetches smaller pieces first and reads ahead while you watch
+- Downloads show progress as data arrives instead of waiting for an entire large segment
+- Slow address lookups no longer hold up other connection paths, and the first picture preview no longer waits for sharper previews to be made
+- The computer window has an Update & Restart button. It asks before closing running terminal programs and cancelling monitors
+- Claude's monitor checks the current status area so old usage limit messages in the transcript are less likely to be mistaken for a current pause
+- The computer needs Ripple for Linux 0.1.26 for the computer side of these changes
+
 ## v0.6.1
 
 - Monitor on the computer and phone shows computer usage and watches selected sessions. A monitor stays active on the computer when the phone disconnects

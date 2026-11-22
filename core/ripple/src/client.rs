@@ -30,9 +30,18 @@ fn describe(a: &SocketAddr) -> String {
 }
 
 async fn resolve_all(addrs: &[String], port: u16) -> Vec<SocketAddr> {
+    let mut tasks = JoinSet::new();
+    for (index, addr) in addrs.iter().cloned().enumerate() {
+        tasks.spawn(async move { (index, net::resolve(&addr, port).await) });
+    }
+    let mut resolved = vec![];
+    while let Some(Ok(item)) = tasks.join_next().await {
+        resolved.push(item);
+    }
+    resolved.sort_by_key(|(index, _)| *index);
     let mut out: Vec<SocketAddr> = vec![];
-    for a in addrs {
-        for s in net::resolve(a, port).await {
+    for (_, addresses) in resolved {
+        for s in addresses {
             let s = net::canonical(s);
             if !out.contains(&s) {
                 out.push(s);
@@ -118,6 +127,28 @@ enum Heard {
     BellFailed(String),
 }
 
+/// Start each address as soon as it resolves. A slow DNS server must not
+/// delay numeric addresses, local discovery, or the doorbell.
+async fn resolve_independently<F, Fut>(addrs: Vec<String>, port: u16, tx: tokio::sync::mpsc::Sender<Heard>, resolve: F)
+where
+    F: Fn(String, u16) -> Fut + Clone + Send + 'static,
+    Fut: std::future::Future<Output = Vec<SocketAddr>> + Send + 'static,
+{
+    let mut tasks = JoinSet::new();
+    for addr in addrs {
+        let resolve = resolve.clone();
+        tasks.spawn(async move { resolve(addr, port).await });
+    }
+    while let Some(result) = tasks.join_next().await {
+        if let Ok(addresses) = result {
+            let addresses = addresses.into_iter().map(net::canonical).collect::<Vec<_>>();
+            if !addresses.is_empty() && tx.send(Heard::Local(addresses)).await.is_err() {
+                break;
+            }
+        }
+    }
+}
+
 /// Fresh attempts to an address the computer is punching towards, lined up with its own packets (sent at 0, 0.3, 0.9 and 2 s).
 const PUNCH_RETRIES: [u64; 5] = [0, 150, 450, 1050, 2200];
 
@@ -135,7 +166,7 @@ pub async fn connect(id: &Identity, info: &ComputerInfo, extra: &[String], mut s
     status(format!("Connecting to {}…", info.name));
     // Testing aid: behave as if no direct path exists, so only the doorbell's answer is used.
     let force_bell = std::env::var_os("RIPPLE_FORCE_DOORBELL").is_some();
-    let addrs = if force_bell { vec![] } else { resolve_all(&list, info.port).await };
+    let has_direct_addresses = !force_bell && !list.is_empty();
 
     let mut set: JoinSet<Result<(quinn::Connection, SocketAddr, bool)>> = JoinSet::new();
     let attempt = |set: &mut JoinSet<Result<(quinn::Connection, SocketAddr, bool)>>, a: SocketAddr, delay: Duration, via_bell: bool| {
@@ -148,13 +179,13 @@ pub async fn connect(id: &Identity, info: &ComputerInfo, extra: &[String], mut s
         });
     };
     let mut tried: Vec<SocketAddr> = vec![];
-    for (i, a) in addrs.iter().enumerate() {
-        tried.push(*a);
-        attempt(&mut set, *a, Duration::from_millis(60 * i as u64), false);
-    }
-
     let (tx, mut rx) = tokio::sync::mpsc::channel::<Heard>(8);
     let mut helpers: Vec<tokio::task::JoinHandle<()>> = vec![];
+    if has_direct_addresses {
+        helpers.push(tokio::spawn(resolve_independently(list, info.port, tx.clone(), |addr, port| async move {
+            net::resolve(&addr, port).await
+        })));
+    }
     // Testing aid: skip the local-network check, as when away from home.
     let skip_lan = std::env::var_os("RIPPLE_SKIP_LAN").is_some();
     if !force_bell && !skip_lan {
@@ -178,7 +209,7 @@ pub async fn connect(id: &Identity, info: &ComputerInfo, extra: &[String], mut s
     let nonce = hex::encode(crate::util::random_bytes(8));
     let bell = info.doorbell.clone();
     // At home a direct path answers within a fraction of a second; past this, start the doorbell too.
-    let bell_at = tokio::time::Instant::now() + if addrs.is_empty() { Duration::ZERO } else { Duration::from_millis(700) };
+    let bell_at = tokio::time::Instant::now() + if has_direct_addresses { Duration::from_millis(700) } else { Duration::ZERO };
     let mut bell_rung = false;
     let mut tx = Some(tx);
     if bell.is_none() {
@@ -425,6 +456,32 @@ pub async fn pair(
     conn.close(0u32.into(), b"paired");
     ep.wait_idle().await;
     Ok(info)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn a_slow_dns_name_does_not_delay_a_ready_address() {
+        let (tx, mut rx) = tokio::sync::mpsc::channel(8);
+        let task = tokio::spawn(resolve_independently(vec!["slow".into(), "fast".into()], 42, tx, |name, _| async move {
+            if name == "slow" { tokio::time::sleep(Duration::from_millis(300)).await; }
+            vec![if name == "slow" { "127.0.0.1:1" } else { "127.0.0.1:2" }.parse().unwrap()]
+        }));
+        let first = tokio::time::timeout(Duration::from_millis(150), rx.recv()).await.unwrap().unwrap();
+        match first {
+            Heard::Local(addresses) => assert_eq!(addresses[0].port(), 2),
+            _ => panic!("unexpected result"),
+        }
+        task.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn resolving_numeric_addresses_deduplicates_without_reordering() {
+        let addresses = resolve_all(&["127.0.0.1:1".into(), "[::ffff:127.0.0.1]:1".into(), "127.0.0.1:2".into()], 9).await;
+        assert_eq!(addresses.iter().map(SocketAddr::port).collect::<Vec<_>>(), vec![1, 2]);
+    }
 }
 
 /// Drains data frames from a stream into `on_data` until it ends; JSON frames go to `on_msg`.

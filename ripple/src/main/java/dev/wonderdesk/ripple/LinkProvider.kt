@@ -154,7 +154,7 @@ class LinkProvider : ContentProvider() {
             if (size > 6L * 1024 * 1024 && android.os.Build.VERSION.SDK_INT >= 26) {
                 val sm = ctx.getSystemService(android.os.storage.StorageManager::class.java)
                 val reader = HandlerThread("ripple-link-read").apply { start() }
-                return try { sm.openProxyFileDescriptor(ParcelFileDescriptor.MODE_READ_ONLY, RemoteFile(ctx, f, path, size), Handler(reader.looper)) }
+                return try { sm.openProxyFileDescriptor(ParcelFileDescriptor.MODE_READ_ONLY, RemoteFile(ctx, f, path, size) { reader.quitSafely() }, Handler(reader.looper)) }
                 catch (e: Exception) { reader.quitSafely(); throw FileNotFoundException(e.message) }
             }
             // Stream through a pipe so the reader sees bytes from the start and can
@@ -164,14 +164,14 @@ class LinkProvider : ContentProvider() {
             val pipe = ParcelFileDescriptor.createPipe()
             val readEnd = pipe[0]
             val writeEnd = pipe[1]
-            io.post {
+            Thread({
                 try {
                     Native.download(h, writeEnd.fd, path) { }
                 } catch (_: Exception) {
                 } finally {
                     runCatching { writeEnd.close() }
                 }
-            }
+            }, "ripple-file-stream").apply { isDaemon = true; start() }
             return readEnd
         }
         // Writing: collect into a local file, then send it when the app closes it.

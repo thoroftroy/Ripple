@@ -16,6 +16,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
 BINARY = Path(os.environ.get("RIPPLE_TEST_BINARY", str(ROOT / "target/debug/ripple")))
+CLIENT = Path(os.environ.get("RIPPLE_TEST_CLIENT_BINARY", str(BINARY)))
 
 
 class MonitorDaemonTest(unittest.TestCase):
@@ -28,6 +29,7 @@ class MonitorDaemonTest(unittest.TestCase):
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
             sock.bind(("127.0.0.1", 0))
             port = sock.getsockname()[1]
+        self.port = port
         config = {"port": port, "doorbell_enabled": False, "upnp": False, "auto_update": False,
                   "restore_sessions": False, "notify_quiet_secs": 0, "shared_dir": str(self.root / "shared")}
         (self.root / "config/ripple/config.json").write_text(json.dumps(config))
@@ -35,6 +37,7 @@ class MonitorDaemonTest(unittest.TestCase):
                    XDG_RUNTIME_DIR=str(self.root / "run"), SHELL="/bin/sh")
         env.pop("RIPPLE_SOCKET", None)
         env.pop("INVOCATION_ID", None)
+        self.env = env
         self.daemon = subprocess.Popen([str(BINARY), "daemon"], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
         self.wait_for(lambda: (self.root / "run/ripple.sock").exists())
 
@@ -137,6 +140,18 @@ class MonitorDaemonTest(unittest.TestCase):
         self.assertEqual(self.item(result["id"])["status"], "watching")
         self.assertTrue(self.request({"op": "monitor_cancel", "id": result["id"]})["ok"])
         self.request({"op": "kill", "id": sid})
+
+    def test_quic_pair_and_file_transfer(self):
+        code = self.request({"op": "pair_code"})["code"]
+        subprocess.run([str(CLIENT), "remote", "pair", f"127.0.0.1:{self.port}", code],
+                       env=self.env, check=True, capture_output=True, timeout=15)
+        source = self.root / "source.bin"
+        destination = self.root / "received.bin"
+        data = bytes(range(256)) * 8192
+        source.write_bytes(data)
+        subprocess.run([str(CLIENT), "remote", "get", str(source), str(destination)],
+                       env=self.env, check=True, capture_output=True, timeout=15)
+        self.assertEqual(destination.read_bytes(), data)
 
 
 if __name__ == "__main__":

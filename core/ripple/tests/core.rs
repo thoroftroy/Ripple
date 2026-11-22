@@ -45,6 +45,35 @@ async fn protocol_frames_round_trip() {
     assert_eq!(format!("{f:?}").contains("255"), true);
 }
 
+#[tokio::test]
+async fn ranged_download_uses_small_frames_without_losing_bytes() {
+    let path = std::path::PathBuf::from(format!("/tmp/opencode/ripple-frame-test-{}", std::process::id()));
+    let input: Vec<u8> = (0..200_000).map(|n| (n % 251) as u8).collect();
+    std::fs::write(&path, &input).unwrap();
+    let (mut client, server) = tokio::io::duplex(512 * 1024);
+    let req = json!({"path": path.to_string_lossy(), "offset": 100, "len": 140_000});
+    let task = tokio::spawn(ripple::daemon::files::get(req, tokio::io::empty(), server));
+    let header = proto::read_json(&mut client).await.unwrap();
+    assert_eq!(header["size"], 200_000);
+    let mut output = vec![];
+    let mut frames = 0;
+    while let Some(frame) = proto::read_frame(&mut client).await.unwrap() {
+        match frame {
+            proto::Frame::Data(bytes) => {
+                assert!(bytes.len() <= 64 * 1024);
+                output.extend(bytes);
+                frames += 1;
+            }
+            proto::Frame::Json(v) if v["done"] == true => break,
+            _ => panic!("unexpected frame"),
+        }
+    }
+    task.await.unwrap().unwrap();
+    assert!(frames >= 3);
+    assert_eq!(output, input[100..140_100]);
+    std::fs::remove_file(path).unwrap();
+}
+
 fn spawn(cmd: &str) -> std::sync::Arc<Session> {
     let (tx, _) = tokio::sync::broadcast::channel(16);
     Session::spawn(

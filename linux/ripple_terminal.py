@@ -519,6 +519,7 @@ class Window(Gtk.ApplicationWindow):
         self.tabs = []
         self.devices_online = {}
         self.pair_dialog = None
+        self.updating = False
         self.set_default_size(self.settings["width"], self.settings["height"])
         self.set_icon_name("ripple")
         self.get_style_context().add_class("ripple-window")
@@ -538,7 +539,8 @@ class Window(Gtk.ApplicationWindow):
                                         ("Pair a phone", "Show a QR code for the Ripple app", lambda *_: self.show_pair(), False),
                                         ("Send to phone", "Offer a file to your phone", lambda *_: self.send_file(), False),
                                         ("Sessions", "Sessions not open in this window", None, False),
-                                        ("Monitor", "Monitor sessions and computer usage", lambda *_: self.show_monitor(), False)):
+                                        ("Monitor", "Monitor sessions and computer usage", lambda *_: self.show_monitor(), False),
+                                        ("Update & Restart", "Update Ripple and restart its service", lambda *_: self.update_and_restart(), False)):
             b = Gtk.Button(label=label)
             b.set_tooltip_text(tip)
             b.get_style_context().add_class("gel")
@@ -582,6 +584,50 @@ class Window(Gtk.ApplicationWindow):
         threading.Thread(target=self._startup, daemon=True).start()
 
     # ----- startup
+    def update_and_restart(self):
+        if self.updating:
+            return
+        dialog = Gtk.MessageDialog(transient_for=self, modal=True, message_type=Gtk.MessageType.WARNING,
+                                   buttons=Gtk.ButtonsType.OK_CANCEL, text="Update and restart Ripple?")
+        dialog.format_secondary_text(
+            "This closes running terminal programs and cancels active monitors. "
+            "Terminal tabs are restored, but programs such as Claude must be resumed manually. "
+            "Claude's automatic usage wait may need to be started again."
+        )
+        confirmed = dialog.run() == Gtk.ResponseType.OK
+        dialog.destroy()
+        if not confirmed:
+            return
+        self.updating = True
+        self.status.set_text("Updating Ripple. Please wait.")
+        def work():
+            try:
+                update = subprocess.run([RIPPLE, "update"], capture_output=True, text=True, timeout=180)
+                if update.returncode:
+                    raise RuntimeError((update.stderr or update.stdout).strip() or "Update failed")
+                restart = subprocess.run(["systemctl", "--user", "restart", "ripple.service"],
+                                         capture_output=True, text=True, timeout=30)
+                if restart.returncode:
+                    raise RuntimeError((restart.stderr or restart.stdout).strip() or "Service restart failed")
+                GLib.idle_add(self._reload_after_update)
+            except (OSError, RuntimeError, subprocess.SubprocessError) as e:
+                GLib.idle_add(self._update_failed, str(e))
+        threading.Thread(target=work, daemon=True).start()
+
+    def _update_failed(self, message):
+        self.updating = False
+        self.status.set_text("Could not update or restart Ripple: %s" % message)
+        return False
+
+    def _reload_after_update(self):
+        try:
+            # Reload the window too, so its code matches the updated service.
+            os.execl(sys.executable, sys.executable, os.path.abspath(__file__))
+        except OSError as e:
+            self.updating = False
+            self.status.set_text("Service restarted. Reopen the window to finish updating: %s" % e)
+        return False
+
     def _startup(self):
         try:
             ensure_daemon()

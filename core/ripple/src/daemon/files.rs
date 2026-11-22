@@ -128,12 +128,17 @@ fn thumb(p: &Path, size: u32) -> Result<Value> {
         bytes
     } else {
         let made = if IMAGE_EXT.contains(&ext.as_str()) {
-            // One decode serves the sharper passes the phone asks for next, so those come straight from the cache.
             let img = decode_image(p)?;
-            for next in next_sizes(size) {
-                store(thumb_cache_file(p, *next, &meta), || encode_jpeg(&img, *next));
+            // Answer the requested size first. Sharper passes are useful, but
+            // must not hold up the first preview while they are generated.
+            let first = encode_jpeg(&img, size)?;
+            let later = next_sizes(size).iter().filter_map(|s| {
+                thumb_cache_file(p, *s, &meta).filter(|c| !c.exists()).map(|c| (*s, c))
+            }).collect::<Vec<_>>();
+            if !later.is_empty() {
+                schedule_sharper(img, later);
             }
-            encode_jpeg(&img, size)?
+            first
         } else if VIDEO_EXT.contains(&ext.as_str()) {
             video_thumb(p, size)?
         } else {
@@ -149,6 +154,25 @@ fn thumb(p: &Path, size: u32) -> Result<Value> {
     };
     let (w, h) = image::ImageReader::new(std::io::Cursor::new(&jpeg)).with_guessed_format().ok().and_then(|r| r.into_dimensions().ok()).unwrap_or((0, 0));
     Ok(json!({"w": w, "h": h, "size": meta.len(), "jpeg": base64::engine::general_purpose::STANDARD.encode(&jpeg)}))
+}
+
+/// At most one image is queued behind the worker. A busy queue is skipped
+/// rather than delaying the request or accumulating large decoded images.
+fn schedule_sharper(img: image::DynamicImage, sizes: Vec<(u32, PathBuf)>) {
+    type Work = (image::DynamicImage, Vec<(u32, PathBuf)>);
+    static WORKER: std::sync::OnceLock<std::sync::mpsc::SyncSender<Work>> = std::sync::OnceLock::new();
+    let sender = WORKER.get_or_init(|| {
+        let (tx, rx) = std::sync::mpsc::sync_channel::<Work>(1);
+        std::thread::spawn(move || {
+            while let Ok((image, sizes)) = rx.recv() {
+                for (size, path) in sizes {
+                    store(Some(path), || encode_jpeg(&image, size));
+                }
+            }
+        });
+        tx
+    });
+    let _ = sender.try_send((img, sizes));
 }
 
 fn encode_jpeg(img: &image::DynamicImage, size: u32) -> Result<Vec<u8>> {
@@ -301,7 +325,10 @@ where
     proto::write_json(&mut w, &json!({"ok": true, "size": meta.len(), "name": name, "mtime": meta.mtime() * 1000})).await?;
     // `len` asks for just a slice of the file (a video player seeking, or a parallel download), so the rest isn't sent.
     let mut left = req["len"].as_u64().unwrap_or(u64::MAX);
-    let mut buf = vec![0u8; 512 * 1024];
+    // A receiver reads a whole frame before it can use any of it. Smaller
+    // frames improve startup and progress on slow links without changing the
+    // protocol or the overall window used by QUIC.
+    let mut buf = vec![0u8; 64 * 1024];
     while left > 0 {
         let want = (buf.len() as u64).min(left) as usize;
         let n = f.read(&mut buf[..want]).await?;

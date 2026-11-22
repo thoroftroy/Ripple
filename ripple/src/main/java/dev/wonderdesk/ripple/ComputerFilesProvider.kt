@@ -122,11 +122,12 @@ class ComputerFilesProvider : DocumentsProvider() {
         if (mode == "r") {
             val st = request(fp, JSONObject().put("op", "stat").put("path", path)).optJSONObject("entry") ?: throw FileNotFoundException(path)
             val size = st.optLong("size")
-            // Big files are read on demand so they open at once; small ones are fetched whole (and kept for next time).
-            if (size > 6L * 1024 * 1024 && android.os.Build.VERSION.SDK_INT >= 26) {
+            // Read larger files on demand rather than downloading the whole
+            // image before a viewer can show its first bytes.
+            if (size > 512L * 1024 && android.os.Build.VERSION.SDK_INT >= 26) {
                 val sm = ctx.getSystemService(android.os.storage.StorageManager::class.java)
                 val reader = HandlerThread("ripple-read").apply { start() }
-                return try { sm.openProxyFileDescriptor(ParcelFileDescriptor.MODE_READ_ONLY, RemoteFile(ctx, fp, path, size), Handler(reader.looper)) }
+                return try { sm.openProxyFileDescriptor(ParcelFileDescriptor.MODE_READ_ONLY, RemoteFile(ctx, fp, path, size) { reader.quitSafely() }, Handler(reader.looper)) }
                 catch (e: Exception) { reader.quitSafely(); throw FileNotFoundException(e.message) }
             }
             val f = try { Transfers.downloadToCache(ctx, fp, path) { _, _ -> } } catch (e: Exception) { throw FileNotFoundException(e.message) }
