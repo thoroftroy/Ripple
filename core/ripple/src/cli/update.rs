@@ -28,7 +28,11 @@ pub fn run(check_only: bool) -> Result<String> {
         .as_array()
         .and_then(|a| a.iter().find(|r| r["assets"].as_array().map(|x| x.iter().any(|a| a["name"].as_str().map(|n| n.starts_with("ripple-linux-x86_64")).unwrap_or(false))).unwrap_or(false)))
         .ok_or_else(|| anyhow!("no Linux release found"))?;
-    let tag = rel["tag_name"].as_str().unwrap_or("v0").trim_start_matches('v').to_string();
+    // The release tag is the phone app's version; the Linux app's own version is in the file name (ripple-linux-x86_64-0.1.24.tar.gz).
+    let tag = rel["assets"]
+        .as_array()
+        .and_then(|x| x.iter().find_map(|a| a["name"].as_str()?.strip_prefix("ripple-linux-x86_64-")?.strip_suffix(".tar.gz").map(String::from)))
+        .unwrap_or_else(|| "0".into());
     if !newer(&tag, ripple::VERSION) {
         return Ok(format!("Ripple {} is up to date.", ripple::VERSION));
     }

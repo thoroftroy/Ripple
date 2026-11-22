@@ -1,5 +1,12 @@
 # Ripple changelog
 
+## v0.6.0
+
+- Connecting to a computer is much faster: the direct path, the home network check and (away from home) the doorbell now all run at the same time instead of one after another, and when the computer answers the doorbell new attempts go out at once instead of waiting for old ones to retry. At home it connects almost instantly; away from home it usually takes a few seconds instead of 10 to 20
+- Picture previews from a computer are ready the moment you open a folder: the computer makes them as soon as the folder is listed (needs Ripple 0.1.24 for Linux, attached to this release)
+- The background shows the connection: lively teal when connected, an amber pulse while it looks for the computer, a sleepy blue when it is asleep and grey when it is out of reach
+- Ripple 0.1.24 for Linux: the updater no longer reinstalls the same version every few hours, a Ripple started by a command while the service restarts no longer leaves the service restarting over and over, and previews are made ahead of time
+
 ## v0.5.4
 
 - Picture and video previews from a computer are made by the computer itself and arrive in passes: a tiny one almost at once, then sharper ones (needs the new Ripple 0.1.23 on the computer; older computers work as before)

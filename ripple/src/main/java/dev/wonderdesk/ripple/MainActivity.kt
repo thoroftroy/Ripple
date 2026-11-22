@@ -258,6 +258,16 @@ fun RemoteScreen(fp: String, startSession: Int, open: (Screen) -> Unit) {
         is LinkState.Offline -> if (Store.sleptAt(context, link.computer.fp) > 0) "Asleep" else "Not reachable"
         LinkState.Idle -> null
     }
+    // The scene shows the link: lively teal when connected, an amber pulse while it looks for the computer, grey and still when the
+    // computer is asleep or out of reach.
+    val asleep = state is LinkState.Offline && Store.sleptAt(context, link.computer.fp) > 0
+    SceneMoodEffect(when (state) {
+        is LinkState.Connected -> SceneMood(hue = 172f, tint = android.graphics.Color.argb(40, 60, 200, 190), energy = 1.25f)
+        is LinkState.Connecting -> SceneMood(hue = 40f, tint = android.graphics.Color.argb(70, 245, 180, 60), energy = 1.6f, pulse = .45f, glyphs = listOf("…", "↔", "•", "?"))
+        is LinkState.Offline -> if (asleep) SceneMood(hue = 240f, energy = .3f, hush = .45f, glyphs = listOf("z", "☾", "·")) else SceneMood(energy = .25f, hush = .7f, glyphs = listOf("✕", "·", "•"))
+        LinkState.Idle -> SceneMood()
+    })
+    LaunchedEffect(connected) { if (connected) WonderMood.celebrate(listOf(">", "_", "✓", "✦")) }
 
     WonderApp(
         appName = "Ripple",

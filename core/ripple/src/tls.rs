@@ -83,6 +83,8 @@ pub fn transport() -> Arc<quinn::TransportConfig> {
     // Keeps home-router and phone-network firewalls from forgetting the path while idle.
     t.keep_alive_interval(Some(Duration::from_secs(12)));
     t.max_idle_timeout(Some(Duration::from_secs(40).try_into().unwrap()));
+    // Handshake packets that get lost (a firewall not yet opened by the doorbell) are resent sooner than the 333 ms default suggests.
+    t.initial_rtt(Duration::from_millis(120));
     t.max_concurrent_bidi_streams(256u32.into());
     t.stream_receive_window((8u32 * 1024 * 1024).into());
     t.receive_window((32u32 * 1024 * 1024).into());

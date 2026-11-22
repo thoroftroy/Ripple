@@ -51,6 +51,7 @@ pub async fn simple(d: &Arc<Daemon>, op: &str, req: &Value) -> Result<Value> {
                         a["name"].as_str().unwrap_or("").to_lowercase().cmp(&b["name"].as_str().unwrap_or("").to_lowercase())
                     })
                 });
+                prewarm(&p, &list);
                 Ok(json!({"path": p.to_string_lossy(), "entries": list}))
             })
             .await?
@@ -127,14 +128,19 @@ fn thumb(p: &Path, size: u32) -> Result<Value> {
         bytes
     } else {
         let made = if IMAGE_EXT.contains(&ext.as_str()) {
-            image_thumb(p, size)?
+            // One decode serves the sharper passes the phone asks for next, so those come straight from the cache.
+            let img = decode_image(p)?;
+            for next in next_sizes(size) {
+                store(thumb_cache_file(p, *next, &meta), || encode_jpeg(&img, *next));
+            }
+            encode_jpeg(&img, size)?
         } else if VIDEO_EXT.contains(&ext.as_str()) {
             video_thumb(p, size)?
         } else {
             bail!("No preview for this kind of file");
         };
         if let Some(c) = &cache {
-            let tmp = c.with_extension("tmp");
+            let tmp = c.with_extension(format!("tmp{:?}", std::thread::current().id()).replace(|ch: char| !ch.is_ascii_alphanumeric(), ""));
             if std::fs::write(&tmp, &made).is_ok() {
                 let _ = std::fs::rename(&tmp, c);
             }
@@ -154,7 +160,7 @@ fn encode_jpeg(img: &image::DynamicImage, size: u32) -> Result<Vec<u8>> {
     Ok(out)
 }
 
-fn image_thumb(p: &Path, size: u32) -> Result<Vec<u8>> {
+fn decode_image(p: &Path) -> Result<image::DynamicImage> {
     use image::ImageDecoder;
     let mut decoder = image::ImageReader::open(p)?.with_guessed_format()?.into_decoder()?;
     let orientation = decoder.orientation().ok();
@@ -162,7 +168,85 @@ fn image_thumb(p: &Path, size: u32) -> Result<Vec<u8>> {
     if let Some(o) = orientation {
         img.apply_orientation(o);
     }
-    encode_jpeg(&img, size)
+    Ok(img)
+}
+
+/// The sharper passes that follow a preview size: Wayfinder asks 48 then 192, Memories 64, 320, then 1280.
+fn next_sizes(size: u32) -> &'static [u32] {
+    match size {
+        48 => &[192],
+        64 => &[320, 1280],
+        320 => &[1280],
+        _ => &[],
+    }
+}
+
+/// Writes a preview into the cache unless it is already there.
+fn store(cache: Option<PathBuf>, make: impl FnOnce() -> Result<Vec<u8>>) {
+    let Some(c) = cache else { return };
+    if c.exists() {
+        return;
+    }
+    if let Ok(bytes) = make() {
+        let tmp = c.with_extension(format!("tmp{:?}", std::thread::current().id()).replace(|ch: char| !ch.is_ascii_alphanumeric(), ""));
+        if std::fs::write(&tmp, &bytes).is_ok() {
+            let _ = std::fs::rename(&tmp, &c);
+        }
+    }
+}
+
+static WARM_GEN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// When a phone opens a folder, the list previews it is about to ask for are made here straight away (newest first,
+/// like the phone shows them), so each request is answered from the cache. Opening another folder stops the old run.
+fn prewarm(dir: &Path, list: &[Value]) {
+    use std::sync::atomic::Ordering;
+    let mut media: Vec<(i64, PathBuf)> = list
+        .iter()
+        .filter(|e| !e["dir"].as_bool().unwrap_or(true) && e["size"].as_u64().unwrap_or(0) > 0)
+        .filter_map(|e| {
+            let name = e["name"].as_str()?;
+            let ext = Path::new(name).extension()?.to_string_lossy().to_lowercase();
+            (IMAGE_EXT.contains(&ext.as_str()) || VIDEO_EXT.contains(&ext.as_str())).then(|| (e["mtime"].as_i64().unwrap_or(0), dir.join(name)))
+        })
+        .collect();
+    if media.is_empty() {
+        return;
+    }
+    media.sort_by(|a, b| b.0.cmp(&a.0));
+    media.truncate(400);
+    let generation = WARM_GEN.fetch_add(1, Ordering::SeqCst) + 1;
+    let queue = Arc::new(std::sync::Mutex::new(media.into_iter().map(|m| m.1).collect::<std::collections::VecDeque<_>>()));
+    for _ in 0..2 {
+        let queue = queue.clone();
+        std::thread::spawn(move || {
+            loop {
+                if WARM_GEN.load(Ordering::SeqCst) != generation {
+                    return;
+                }
+                let Some(p) = queue.lock().unwrap().pop_front() else { return };
+                warm(&p);
+            }
+        });
+    }
+}
+
+fn warm(p: &Path) {
+    let Ok(meta) = std::fs::metadata(p) else { return };
+    let want: Vec<(u32, PathBuf)> = [48u32, 192].iter().filter_map(|s| thumb_cache_file(p, *s, &meta).filter(|c| !c.exists()).map(|c| (*s, c))).collect();
+    if want.is_empty() {
+        return;
+    }
+    let ext = p.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
+    let img = if IMAGE_EXT.contains(&ext.as_str()) {
+        decode_image(p).ok()
+    } else {
+        video_thumb(p, 192).ok().and_then(|j| image::load_from_memory(&j).ok())
+    };
+    let Some(img) = img else { return };
+    for (s, c) in want {
+        store(Some(c), || encode_jpeg(&img, s));
+    }
 }
 
 /// A frame from a video, if ffmpeg is installed.

@@ -149,6 +149,11 @@ pub const DISCOVER_MAGIC: &[u8] = b"RIPPLE-DISCOVER/1";
 
 /// Asks the local network "any Ripple computers here?" and collects answers for `wait`.
 pub async fn discover(wait: Duration) -> Vec<Found> {
+    discover_for(wait, None).await
+}
+
+/// Like `discover`, but returns as soon as the computer with fingerprint `want` answers.
+pub async fn discover_for(wait: Duration, want: Option<&str>) -> Vec<Found> {
     let sock = match tokio::net::UdpSocket::bind("0.0.0.0:0").await {
         Ok(s) => s,
         Err(_) => return vec![],
@@ -203,6 +208,9 @@ pub async fn discover(wait: Duration) -> Vec<Found> {
                     port,
                     addr: fmt_addr(canonical(from).ip(), port),
                 });
+                if want.is_some_and(|w| found.last().is_some_and(|f| f.fp == w)) {
+                    break;
+                }
             }
         }
     }

@@ -84,7 +84,8 @@ async fn race(
             },
             m = async { match more.as_mut() { Some(rx) => rx.recv().await, None => std::future::pending().await } } => match m {
                 Some(list) => for a in list {
-                    if !tried.contains(&a) { tried.push(a); spawn_attempt(&mut set, ep, cfg, a, Duration::ZERO); }
+                    if !tried.contains(&a) { tried.push(a); }
+                    for d in PUNCH_RETRIES { spawn_attempt(&mut set, ep, cfg, a, Duration::from_millis(d)); }
                 },
                 None => more = None,
             },
@@ -108,47 +109,185 @@ fn explain(e: &anyhow::Error) -> String {
     }
 }
 
+/// What the helpers running beside a connection attempt report back.
+enum Heard {
+    /// Addresses from the local-network check.
+    Local(Vec<SocketAddr>),
+    /// The computer answered the doorbell and is sending packets our way now.
+    Answer(Vec<SocketAddr>),
+    BellFailed(String),
+}
+
+/// Fresh attempts to an address the computer is punching towards, lined up with its own packets (sent at 0, 0.3, 0.9 and 2 s).
+const PUNCH_RETRIES: [u64; 5] = [0, 150, 450, 1050, 2200];
+
 /// Connects to a paired computer. `status` receives short progress messages for the UI.
+///
+/// Everything runs at once so a connection away from home doesn't wait for each step to give up:
+/// direct attempts start straight away, the local-network check runs beside them, and if nothing
+/// has answered after a moment the doorbell is rung while the direct attempts keep going. When the
+/// computer answers the doorbell, new attempts are fired in step with the packets it sends.
 pub async fn connect(id: &Identity, info: &ComputerInfo, extra: &[String], mut status: impl FnMut(String)) -> Result<Client> {
     let ep = net::endpoint(0, None)?;
     let cfg = tls::client_config(id, Some(info.fp.clone()))?;
     let mut list: Vec<String> = info.addrs.clone();
     list.extend(extra.iter().cloned());
-    status(format!("Looking for {}…", info.name));
-    let mut addrs = resolve_all(&list, info.port).await;
-    // Quick local-network check too: the computer may have a new address at home.
-    let found = net::discover(Duration::from_millis(900)).await;
-    for f in found.iter().filter(|f| f.fp == info.fp) {
-        for s in net::resolve(&f.addr, f.port).await {
-            if !addrs.contains(&s) {
-                addrs.insert(0, s);
-            }
-        }
-    }
+    status(format!("Connecting to {}…", info.name));
     // Testing aid: behave as if no direct path exists, so only the doorbell's answer is used.
     let force_bell = std::env::var_os("RIPPLE_FORCE_DOORBELL").is_some();
-    if force_bell {
-        addrs.clear();
+    let addrs = if force_bell { vec![] } else { resolve_all(&list, info.port).await };
+
+    let mut set: JoinSet<Result<(quinn::Connection, SocketAddr, bool)>> = JoinSet::new();
+    let attempt = |set: &mut JoinSet<Result<(quinn::Connection, SocketAddr, bool)>>, a: SocketAddr, delay: Duration, via_bell: bool| {
+        let ep = ep.clone();
+        let cfg = cfg.clone();
+        set.spawn(async move {
+            tokio::time::sleep(delay).await;
+            let c = ep.connect_with(cfg, a, "ripple").map_err(|e| anyhow!("{a}: {e}"))?.await.map_err(|e| anyhow!("{a}: {e}"))?;
+            Ok((c, a, via_bell))
+        });
+    };
+    let mut tried: Vec<SocketAddr> = vec![];
+    for (i, a) in addrs.iter().enumerate() {
+        tried.push(*a);
+        attempt(&mut set, *a, Duration::from_millis(60 * i as u64), false);
     }
-    if !addrs.is_empty() {
-        status(format!("Connecting to {}…", info.name));
-        match race(&ep, &cfg, addrs.clone(), None, Duration::from_secs(4)).await {
-            Ok((conn, a)) => return Ok(Client { endpoint: ep, conn, via: describe(&a), remote: a }),
-            Err(e) => {
-                let msg = explain(&e);
-                if msg != e.to_string() {
-                    bail!(msg);
+
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<Heard>(8);
+    let mut helpers: Vec<tokio::task::JoinHandle<()>> = vec![];
+    // Testing aid: skip the local-network check, as when away from home.
+    let skip_lan = std::env::var_os("RIPPLE_SKIP_LAN").is_some();
+    if !force_bell && !skip_lan {
+        // The computer may have a new address at home.
+        let tx = tx.clone();
+        let fp = info.fp.clone();
+        helpers.push(tokio::spawn(async move {
+            let found = net::discover_for(Duration::from_millis(900), Some(&fp)).await;
+            let mut out = vec![];
+            for f in found.iter().filter(|f| f.fp == fp) {
+                out.extend(net::resolve(&f.addr, f.port).await.into_iter().map(net::canonical));
+            }
+            if !out.is_empty() {
+                let _ = tx.send(Heard::Local(out)).await;
+            }
+        }));
+    }
+    let my_fp = id.fingerprint();
+    let my_port = ep.local_addr()?.port();
+    let mine: Vec<String> = net::local_ips().into_iter().map(|ip| net::fmt_addr(ip, my_port)).collect();
+    let nonce = hex::encode(crate::util::random_bytes(8));
+    let bell = info.doorbell.clone();
+    // At home a direct path answers within a fraction of a second; past this, start the doorbell too.
+    let bell_at = tokio::time::Instant::now() + if addrs.is_empty() { Duration::ZERO } else { Duration::from_millis(700) };
+    let mut bell_rung = false;
+    let mut tx = Some(tx);
+    if bell.is_none() {
+        tx = None;
+    }
+    let started = tokio::time::Instant::now();
+    let mut deadline = started + if bell.is_some() { Duration::from_secs(20) } else { Duration::from_secs(5) };
+    let mut errs: Vec<String> = vec![];
+    let mut rx_open = true;
+    let outcome: Result<(quinn::Connection, SocketAddr, bool)> = loop {
+        if set.is_empty() && !rx_open && (bell_rung || bell.is_none()) {
+            break Err(anyhow!("{}", if errs.is_empty() { "no answer".to_string() } else { errs.join("; ") }));
+        }
+        tokio::select! {
+            r = set.join_next(), if !set.is_empty() => match r {
+                Some(Ok(Ok(x))) => break Ok(x),
+                Some(Ok(Err(e))) => {
+                    let m = explain(&e);
+                    if m != e.to_string() {
+                        break Err(e);
+                    }
+                    if !errs.contains(&e.to_string()) {
+                        errs.push(e.to_string());
+                    }
+                }
+                _ => {}
+            },
+            m = rx.recv(), if rx_open => match m {
+                Some(Heard::Local(list)) => for a in list {
+                    if !tried.contains(&a) {
+                        tried.push(a);
+                        attempt(&mut set, a, Duration::ZERO, false);
+                    }
+                },
+                Some(Heard::Answer(list)) => {
+                    status(format!("{} answered. Opening a path…", info.name));
+                    for a in list {
+                        if !tried.contains(&a) {
+                            tried.push(a);
+                        }
+                        for d in PUNCH_RETRIES {
+                            attempt(&mut set, a, Duration::from_millis(d), true);
+                        }
+                    }
+                }
+                Some(Heard::BellFailed(e)) => errs.push(e),
+                None => rx_open = false,
+            },
+            _ = tokio::time::sleep_until(bell_at), if !bell_rung && bell.is_some() => {
+                bell_rung = true;
+                status("Not at home: ringing the doorbell…".into());
+                let b = bell.clone().unwrap();
+                let tx = tx.take().unwrap();
+                let knock = json!({"t": "knock", "from": my_fp, "addrs": mine, "nonce": nonce, "ts": crate::util::now_secs()});
+                let nonce = nonce.clone();
+                let port = info.port;
+                deadline = deadline.max(tokio::time::Instant::now() + Duration::from_secs(15));
+                helpers.push(tokio::spawn(async move {
+                    let since = crate::util::now_secs().saturating_sub(2);
+                    let b2 = b.clone();
+                    match tokio::task::spawn_blocking(move || b2.ring(&knock)).await {
+                        Ok(Ok(())) => {}
+                        Ok(Err(e)) => { let _ = tx.send(Heard::BellFailed(e.to_string())).await; return; }
+                        Err(e) => { let _ = tx.send(Heard::BellFailed(e.to_string())).await; return; }
+                    }
+                    for _ in 0..30 {
+                        let b = b.clone();
+                        if let Ok(Ok(msgs)) = tokio::task::spawn_blocking(move || b.poll(since)).await {
+                            for m in msgs {
+                                if m["t"] == "answer" && m["nonce"] == nonce.as_str() {
+                                    let list: Vec<String> = m["addrs"].as_array().map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect()).unwrap_or_default();
+                                    let _ = tx.send(Heard::Answer(resolve_all(&list, port).await)).await;
+                                    return;
+                                }
+                            }
+                        }
+                        tokio::time::sleep(Duration::from_millis(350)).await;
+                    }
+                }));
+            },
+            _ = tokio::time::sleep_until(deadline) => {
+                break Err(anyhow!("{}", if errs.is_empty() { format!("no answer ({} addresses tried)", tried.len()) } else { errs.join("; ") }));
+            }
+        }
+    };
+    helpers.iter().for_each(|h| h.abort());
+    set.abort_all();
+    match outcome {
+        Ok((conn, a, via_bell)) => {
+            let via = if via_bell { format!("{} via doorbell", describe(&a)) } else { describe(&a) };
+            Ok(Client { endpoint: ep, conn, via, remote: a })
+        }
+        Err(e) => {
+            let msg = explain(&e);
+            let detail = e.to_string();
+            if msg != detail {
+                bail!(msg);
+            }
+            match &bell {
+                None => bail!("Couldn't reach {}. Is it on and running Ripple?", info.name),
+                Some(b) => {
+                    // Tell the computer why, over the same encrypted doorbell, so the cause can be read there.
+                    let report = json!({"t": "diag", "from": my_fp, "nonce": nonce, "tried": mine, "errors": detail, "ts": crate::util::now_secs()});
+                    let b2 = b.clone();
+                    let _ = tokio::task::spawn_blocking(move || b2.ring(&report)).await;
+                    bail!("Couldn't reach {}. It may be off or asleep, or its network blocks the path. Details: {detail}", info.name)
                 }
             }
         }
-    }
-    let Some(bell) = info.doorbell.clone() else {
-        bail!("Couldn't reach {}. Is it on and running Ripple?", info.name);
-    };
-    status("Ringing the doorbell…".into());
-    match knock_and_race(&ep, &cfg, &bell, &id.fingerprint(), None, addrs, info.port, &info.name, &mut status).await {
-        Ok((conn, a)) => Ok(Client { endpoint: ep, conn, via: format!("{} via doorbell", describe(&a)), remote: a }),
-        Err(e) => Err(e),
     }
 }
 

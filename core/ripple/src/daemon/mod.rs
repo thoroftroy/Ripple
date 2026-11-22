@@ -330,8 +330,20 @@ impl Daemon {
 
 /// Runs the daemon until killed.
 pub async fn run() -> Result<()> {
-    let d = Daemon::load()?;
     let sock = socket_path();
+    // Started by systemd while another copy (started by hand, or by a command while the service was restarting) is
+    // already serving: stand by and take over when it stops, instead of failing and being restarted every few seconds.
+    if std::env::var_os("INVOCATION_ID").is_some() {
+        let mut said = false;
+        while tokio::net::UnixStream::connect(&sock).await.is_ok() {
+            if !said {
+                eprintln!("ripple: another Ripple service is already running; standing by until it stops");
+                said = true;
+            }
+            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+        }
+    }
+    let d = Daemon::load()?;
     server::serve_unix(d.clone(), &sock).await?;
     reach::start(d.clone()).await;
     d.restore_sessions();

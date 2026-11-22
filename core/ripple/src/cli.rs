@@ -158,6 +158,15 @@ pub async fn connect() -> Result<tokio::net::UnixStream> {
 
 fn start_daemon() -> Result<()> {
     use std::os::unix::process::CommandExt;
+    // When Ripple is installed as a service, ask the service to start rather than launching a second, unmanaged copy.
+    let enabled = std::process::Command::new("systemctl").args(["--user", "is-enabled", "--quiet", "ripple.service"]).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).status().map(|s| s.success()).unwrap_or(false);
+    let default_cfg = ripple::daemon::config_dir() == std::path::PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(".config/ripple");
+    if enabled && default_cfg && std::env::var_os("RIPPLE_SOCKET").is_none() && std::env::var_os("INVOCATION_ID").is_none() {
+        let started = std::process::Command::new("systemctl").args(["--user", "start", "--no-block", "ripple.service"]).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).status().map(|s| s.success()).unwrap_or(false);
+        if started {
+            return Ok(());
+        }
+    }
     let exe = std::env::current_exe()?;
     let cache = std::path::PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(".cache/ripple");
     std::fs::create_dir_all(&cache)?;
