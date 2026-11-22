@@ -85,6 +85,10 @@ class MonitorDaemonTest(unittest.TestCase):
     def item(self, monitor_id):
         return next(x for x in self.request({"op": "monitor_list"})["monitors"] if x["id"] == monitor_id)
 
+    def subject_status(self, monitor_id):
+        sessions = self.item(monitor_id).get("sessions", [])
+        return sessions[0]["status"] if sessions else ""
+
     def test_success_failure_cancel_and_countdown(self):
         marker = self.root / "action-ran"
         command = "printf success > " + str(marker)
@@ -135,7 +139,38 @@ class MonitorDaemonTest(unittest.TestCase):
         result = self.request({"op": "monitor_start", "mode": "claude", "condition": "all", "action": "command",
                                "command": f"touch {marker}", "sessions": [sid]})
         self.assertTrue(result["ok"])
-        self.wait_for(lambda: "automatic continuation shown" in self.item(result["id"])["sessions"][0]["status"])
+        self.wait_for(lambda: "automatic continuation shown" in self.subject_status(result["id"]))
+        self.assertFalse(marker.exists())
+        self.assertEqual(self.item(result["id"])["status"], "watching")
+        self.assertTrue(self.request({"op": "monitor_cancel", "id": result["id"]})["ok"])
+        self.request({"op": "kill", "id": sid})
+
+    def test_limit_left_in_transcript_is_not_completion(self):
+        fake = self.root / "claude"
+        fake.symlink_to("/usr/bin/python3")
+        script = self.root / "fake_claude.py"
+        script.write_text(
+            "import time\n"
+            "print('Working · esc to interrupt', flush=True)\n"
+            "time.sleep(4)\n"
+            "print('\\x1b[2J\\x1b[H', end='', flush=True)\n"
+            "print('Usage limit reached', flush=True)\n"
+            "print('────────────', flush=True)\n"
+            "print('❯', flush=True)\n"
+            "print('────────────', flush=True)\n"
+            "print('auto mode on (shift+tab to cycle)', flush=True)\n"
+            "time.sleep(20)\n"
+        )
+        session = self.request({"op": "new", "name": "Fake Claude", "cwd": str(self.root),
+                                "command": f"exec {fake} -u {script}"})
+        sid = session["id"]
+        self.wait_for(lambda: self.request({"op": "peek", "id": sid})["session"]["program"] == "claude")
+        marker = self.root / "must-not-run"
+        result = self.request({"op": "monitor_start", "mode": "claude", "condition": "all", "action": "command",
+                               "command": f"touch {marker}", "sessions": [sid]})
+        self.assertTrue(result["ok"])
+        self.wait_for(lambda: self.subject_status(result["id"]) == "Working")
+        self.wait_for(lambda: "continuation not confirmed" in self.subject_status(result["id"]))
         self.assertFalse(marker.exists())
         self.assertEqual(self.item(result["id"])["status"], "watching")
         self.assertTrue(self.request({"op": "monitor_cancel", "id": result["id"]})["ok"])

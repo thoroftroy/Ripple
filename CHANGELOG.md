@@ -1,5 +1,10 @@
 # Ripple changelog
 
+## v0.6.3
+
+- Monitor safety fix: a usage limit message left in the visible conversation is treated as an unconfirmed limit rather than a finished response, even if the live countdown is missing
+- Needs Ripple for Linux 0.1.27. Old limit messages may hold up the finish action until they leave the screen
+
 ## v0.6.2
 
 - Faster starts for large pictures and videos: the phone fetches smaller pieces first and reads ahead while you watch

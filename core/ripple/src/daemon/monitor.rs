@@ -58,6 +58,15 @@ fn claude_state(text: &str, program: &str) -> ClaudeState {
     {
         return ClaudeState::Limit;
     }
+    // A previous limit notice can remain above the input after a restart or
+    // redraw, even when the live countdown is missing. It is ambiguous, so
+    // never treat that screen as completion.
+    if footer.contains("hit your") && footer.contains("limit")
+        || footer.contains("limit reached") || footer.contains("usage limit")
+        && (footer.contains("reset") || footer.contains("reached"))
+    {
+        return ClaudeState::Limit;
+    }
     // Do not treat dialogs, interruptions, failures or running subagents as a
     // finished response, even when an input prompt is visible behind them.
     if (status.contains('←') && status.contains("agent"))
@@ -295,7 +304,7 @@ mod tests {
         assert_eq!(claude_state("You've hit your weekly limit · resets Monday", "claude"), ClaudeState::Limit);
         assert_eq!(claude_state("You've hit your monthly spend limit", "claude"), ClaudeState::Limit);
         assert_eq!(claude_state("Your usage limit has reset · Press enter to continue", "claude"), ClaudeState::Unknown);
-        assert_eq!(claude_state("Usage limit reached · set to continue automatically at 3pm\n────────\n❯\n────────\n⏵⏵ auto mode on (shift+tab to cycle)", "claude"), ClaudeState::Ready);
+        assert_eq!(claude_state("Usage limit reached · set to continue automatically at 3pm\n────────\n❯\n────────\n⏵⏵ auto mode on (shift+tab to cycle)", "claude"), ClaudeState::Limit);
         assert_eq!(claude_state(&format!("Error: request failed\n{ready}"), "claude"), ClaudeState::Unknown);
     }
 }
