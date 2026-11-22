@@ -347,6 +347,168 @@ class Tab:
             self.term.feed_child(" ".join(GLib.shell_quote(p) for p in paths).encode() + b" ")
 
 
+class MonitorPage(Gtk.Box):
+    """A view of daemon-owned monitors. Closing the view does not stop them."""
+    def __init__(self, win):
+        super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        self.win = win
+        self.set_border_width(12)
+        self.busy = False
+        self.stats = Gtk.Label(label="Reading computer usage", xalign=0)
+        self.pack_start(self.stats, False, False, 0)
+        self.pack_start(Gtk.Label(label="Select sessions to monitor", xalign=0), False, False, 0)
+        self.sessions = Gtk.ListStore(bool, int, str, str)
+        tree = Gtk.TreeView(model=self.sessions)
+        check = Gtk.CellRendererToggle()
+        check.connect("toggled", lambda _w, p: self.sessions[p].__setitem__(0, not self.sessions[p][0]))
+        tree.append_column(Gtk.TreeViewColumn("Select", check, active=0))
+        for label, column in (("ID", 1), ("Session", 2), ("Program", 3)):
+            tree.append_column(Gtk.TreeViewColumn(label, Gtk.CellRendererText(), text=column))
+        scroll = Gtk.ScrolledWindow()
+        scroll.set_min_content_height(120)
+        scroll.add(tree)
+        self.pack_start(scroll, True, True, 0)
+        row = Gtk.Box(spacing=6)
+        for label, selected in (("Select all", True), ("Clear", False)):
+            button = Gtk.Button(label=label)
+            button.connect("clicked", lambda _b, v=selected: self.select(v))
+            row.pack_start(button, False, False, 0)
+        self.pack_start(row, False, False, 0)
+        self.mode = Gtk.ComboBoxText()
+        self.mode.append("claude", "Claude response appears finished")
+        self.mode.append("exit_success", "Session command exits successfully")
+        self.mode.set_active_id("claude")
+        self.condition = Gtk.ComboBoxText()
+        self.condition.append("all", "All selected sessions")
+        self.condition.append("any", "Any selected session")
+        self.condition.set_active_id("all")
+        self.action = Gtk.ComboBoxText()
+        self.action.append("notify", "Send a notification")
+        self.action.append("sleep", "Sleep the computer")
+        self.action.append("command", "Run a command")
+        self.action.set_active_id("notify")
+        for widget in (self.mode, self.condition, self.action):
+            row = Gtk.Box(spacing=8)
+            row.pack_start(widget, True, True, 0)
+            self.pack_start(row, False, False, 0)
+        self.run_new = Gtk.CheckButton(label="Start a new command session and monitor its exit")
+        self.run_new.connect("toggled", lambda button: self.mode.set_active_id("exit_success") if button.get_active() else None)
+        self.pack_start(self.run_new, False, False, 0)
+        self.run_command = Gtk.Entry()
+        self.run_command.set_placeholder_text("Command to start now, for example a release script")
+        self.pack_start(self.run_command, False, False, 0)
+        self.cwd = Gtk.Entry(text=os.path.expanduser("~"))
+        self.cwd.set_placeholder_text("Folder for the new command")
+        self.pack_start(self.cwd, False, False, 0)
+        self.command = Gtk.Entry()
+        self.command.set_placeholder_text("Command to run when the condition is met")
+        self.pack_start(self.command, False, False, 0)
+        self.pack_start(Gtk.Label(label="Claude detection is an estimate. Command exit monitoring requires a session started with a command.", xalign=0, wrap=True), False, False, 0)
+        button = Gtk.Button(label="Start monitoring")
+        button.connect("clicked", self.start)
+        self.pack_start(button, False, False, 0)
+        self.monitors = Gtk.ListStore(int, str)
+        monitor_tree = Gtk.TreeView(model=self.monitors)
+        monitor_tree.append_column(Gtk.TreeViewColumn("Active and recent monitors", Gtk.CellRendererText(), text=1))
+        monitor_scroll = Gtk.ScrolledWindow()
+        monitor_scroll.set_min_content_height(120)
+        monitor_scroll.add(monitor_tree)
+        self.pack_start(monitor_scroll, True, True, 0)
+        cancel = Gtk.Button(label="Cancel selected monitor")
+        cancel.connect("clicked", lambda _b: self.cancel(monitor_tree))
+        self.pack_start(cancel, False, False, 0)
+        self.message = Gtk.Label(xalign=0, wrap=True)
+        self.pack_start(self.message, False, False, 0)
+        GLib.timeout_add_seconds(5, self.refresh)
+        self.refresh()
+
+    def select(self, value):
+        for row in self.sessions:
+            row[0] = value
+
+    def refresh(self):
+        if self.busy:
+            return True
+        self.busy = True
+        def work():
+            try:
+                data = (request({"op": "sessions"}), request({"op": "stats"}), request({"op": "monitor_list"}))
+                GLib.idle_add(self.show_data, data, None)
+            except Exception as e:
+                GLib.idle_add(self.show_data, None, str(e))
+        threading.Thread(target=work, daemon=True).start()
+        return True
+
+    def show_data(self, data, error):
+        self.busy = False
+        if error:
+            self.message.set_text("Could not read the monitor: " + error)
+            return False
+        sessions, stats, monitors = data
+        selected = {row[1] for row in self.sessions if row[0]}
+        self.sessions.clear()
+        for s in sessions.get("sessions", []):
+            self.sessions.append([s["id"] in selected, s["id"], s["name"], s.get("program", "")])
+        memory = (100 * stats.get("mem_used", 0) // stats["mem_total"]) if stats.get("mem_total") else 0
+        self.stats.set_text("CPU %s%%   Memory %s%%   GPU %s   Temperature %s" %
+                            (stats.get("cpu", "?"), memory,
+                             str(stats["gpu"]) + "%" if stats.get("gpu") is not None else "unavailable",
+                             str(stats["temp"]) + "°C" if stats.get("temp") is not None else "unavailable"))
+        self.monitors.clear()
+        for m in monitors.get("monitors", []):
+            names = ", ".join("%s: %s" % (s["name"], s["status"]) for s in m.get("sessions", []))
+            left = " (%ss)" % m["remaining"] if m.get("remaining") is not None else ""
+            self.monitors.append([m["id"], "#%s  %s%s  %s" % (m["id"], m["status"], left, names)])
+        return False
+
+    def start(self, _button):
+        ids = [row[1] for row in self.sessions if row[0]]
+        run_command = self.run_command.get_text().strip() if self.run_new.get_active() else ""
+        if self.run_new.get_active():
+            ids = []
+        action = self.action.get_active_id()
+        command = self.command.get_text().strip()
+        if (not ids and not run_command) or (action == "command" and not command):
+            self.message.set_text("Select sessions or enter a new command, and enter an action command if needed.")
+            return
+        text = "The monitor runs on this computer even when Ripple is closed."
+        if run_command:
+            text += "\n\nStart now: " + run_command
+        if action != "notify":
+            text += " The selected action is real. There is a 30 second countdown before it runs."
+        if self.mode.get_active_id() == "claude":
+            text += " Claude completion is inferred from its screen and can be wrong."
+        if action == "command":
+            text += "\n\nCommand: " + command
+        dialog = Gtk.MessageDialog(transient_for=self.win, modal=True, message_type=Gtk.MessageType.QUESTION,
+                                   buttons=Gtk.ButtonsType.OK_CANCEL, text="Start this monitor?")
+        dialog.format_secondary_text(text)
+        confirmed = dialog.run() == Gtk.ResponseType.OK
+        dialog.destroy()
+        if not confirmed:
+            return
+        try:
+            result = request({"op": "monitor_start", "sessions": ids, "mode": self.mode.get_active_id(),
+                              "condition": self.condition.get_active_id(), "action": action, "command": command,
+                              "run_command": run_command, "cwd": self.cwd.get_text()})
+            self.message.set_text("Monitor %s started." % result["id"])
+            self.refresh()
+        except Exception as e:
+            self.message.set_text("Could not start the monitor: " + str(e))
+
+    def cancel(self, tree):
+        model, iterator = tree.get_selection().get_selected()
+        if iterator is None:
+            self.message.set_text("Select a monitor first.")
+            return
+        try:
+            request({"op": "monitor_cancel", "id": model[iterator][0]})
+            self.message.set_text("Monitor cancelled.")
+            self.refresh()
+        except Exception as e:
+            self.message.set_text("Could not cancel: " + str(e))
+
+
 class Window(Gtk.ApplicationWindow):
     def __init__(self, app):
         super().__init__(application=app, title="Ripple")
@@ -375,7 +537,8 @@ class Window(Gtk.ApplicationWindow):
         for label, tip, cb, primary in (("＋ New tab", "New tab (Ctrl+Shift+T)", lambda *_: self.new_tab(), True),
                                         ("Pair a phone", "Show a QR code for the Ripple app", lambda *_: self.show_pair(), False),
                                         ("Send to phone", "Offer a file to your phone", lambda *_: self.send_file(), False),
-                                        ("Sessions", "Sessions not open in this window", None, False)):
+                                        ("Sessions", "Sessions not open in this window", None, False),
+                                        ("Monitor", "Monitor sessions and computer usage", lambda *_: self.show_monitor(), False)):
             b = Gtk.Button(label=label)
             b.set_tooltip_text(tip)
             b.get_style_context().add_class("gel")
@@ -491,6 +654,15 @@ class Window(Gtk.ApplicationWindow):
             t.apply_style()
 
     # ----- tabs
+    def show_monitor(self):
+        page = getattr(self, "monitor_page", None)
+        if page is None:
+            page = self.monitor_page = Gtk.ScrolledWindow()
+            page.add(MonitorPage(self))
+            self.nb.append_page(page, Gtk.Label(label="Monitor"))
+            page.show_all()
+        self.nb.set_current_page(self.nb.page_num(page))
+
     def current_tab(self):
         page = self.nb.get_current_page()
         if page < 0:

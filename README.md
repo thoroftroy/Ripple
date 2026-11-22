@@ -12,6 +12,31 @@ Your computer's terminal, on your phone. Start something on the computer (a buil
 - **Files both ways.** Browse the computer's files from the phone, download, upload, share anything from Android with "Send to computer", and open computer files from any app through the Android file picker. `ripple send FILE` on the computer offers files to the phone. Progress shows the size, speed and time left.
 - **Android command line.** A local shell on the phone with `wd`, a command for managing the Wonderdesk suite (apps and versions, device and battery details).
 - **Notifications.** A bell or `ripple notify TEXT` on the computer shows a notification on the phone, so you know when a long job finishes.
+- **Monitor.** Open Monitor on the computer or phone to see computer usage and watch sessions. Choose a notification, sleep, or a command to run when the chosen condition is met. Monitors run on the computer even when the phone disconnects.
+
+### Monitor safety and limits
+
+Starting a monitor requires confirmation. Sleep and command actions have a
+30 second countdown that can be cancelled. The monitor is one shot and is
+not restored after the Ripple service restarts. Connected phones receive
+notifications, but offline phone delivery is not guaranteed.
+
+Claude monitoring reads the current terminal screen. It first needs to see
+Claude working, then a ready prompt for 20 seconds. A visible usage limit is
+not counted as completion. Automatic continuation is reported only when its
+banner is visible. Screen detection is an estimate, not proof that the work
+succeeded, and a changed layout, a hidden warning, an interrupted task or
+background work can defeat it. Review this risk before selecting sleep or a
+command. An unknown screen does not trigger the action.
+
+For a script or other command, select **Successful command exit** and start
+it from the monitor, or select a Ripple session originally started with a
+command. Exit code zero is treated as success. A command entered into an
+existing interactive shell cannot be verified this way. An OpenCode command
+started in its own Ripple session can use the command exit mode. Detection of
+individual turns in an interactive OpenCode session is not supported yet.
+Commands used as monitor actions run as the logged in user through `/bin/sh`
+with no interactive terminal.
 
 ## Install
 

@@ -243,8 +243,9 @@ fun RemoteScreen(fp: String, startSession: Int, open: (Screen) -> Unit) {
         onDispose { termView?.let { v -> context.getSystemService(InputMethodManager::class.java).hideSoftInputFromWindow(v.windowToken, 0) } }
     }
     val connected = state is LinkState.Connected
+    var showMonitor by rememberSaveable(fp) { mutableStateOf(false) }
     val showUsage = remember { Store.showUsage(context) }
-    val usageState by rememberUsage(link, connected, showUsage)
+    val usageState by rememberUsage(link, connected, showUsage || showMonitor)
     val usage = usageState.usage
     val showPower = remember { Store.showPower(context) }
     val showFiles = remember { Store.showFiles(context) }
@@ -277,6 +278,7 @@ fun RemoteScreen(fp: String, startSession: Int, open: (Screen) -> Unit) {
         onBack = { open(Screen.Home) },
         actions = {
             ToolbarButton(WonderIcons.Add, "New session", { showNew = true }, enabled = connected)
+            ToolbarButton(WonderIcons.Speed, "Monitor", { showMonitor = !showMonitor }, enabled = connected)
             if (showFiles) ToolbarButton(WonderIcons.Folder, "Files", { open(Screen.Files(fp, info?.cwd ?: "")) })
         },
         menu = listOfNotNull(
@@ -335,11 +337,13 @@ fun RemoteScreen(fp: String, startSession: Int, open: (Screen) -> Unit) {
                 else -> {}
             }
             // Session tabs.
-            if (sessions.isNotEmpty() && showTabs) {
+            if (showTabs) {
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 6.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Chip("Monitor", showMonitor, { showMonitor = true }, WonderIcons.Speed)
+                    Spacer(Modifier.width(4.dp))
                     sessions.forEach { s ->
                         Box {
-                            SessionTab(s, s.id == current, onClick = { current = s.id }, onLong = { tabMenu = s })
+                            SessionTab(s, s.id == current && !showMonitor, onClick = { current = s.id; showMonitor = false }, onLong = { tabMenu = s })
                             DropdownMenu(tabMenu == s, { tabMenu = null }) {
                                 DropdownMenuItem({ Text("Rename") }, { tabMenu = null; renaming = s })
                                 DropdownMenuItem({ Text("Files in this folder") }, { tabMenu = null; open(Screen.Files(fp, s.cwd)) })
@@ -355,7 +359,9 @@ fun RemoteScreen(fp: String, startSession: Int, open: (Screen) -> Unit) {
                 }
             }
             Box(Modifier.weight(1f).fillMaxWidth()) {
-                if (terminal != null) {
+                if (showMonitor) {
+                    RippleMonitorPane(link, sessions, connected, usage) { showStats = true }
+                } else if (terminal != null) {
                     key(terminal) {
                         TerminalPane(terminal.session, Modifier.fillMaxSize(), mods, onViewReady = { termView = it })
                     }
@@ -382,7 +388,7 @@ fun RemoteScreen(fp: String, startSession: Int, open: (Screen) -> Unit) {
                     LoadingPane((state as? LinkState.Connecting)?.step ?: "Connecting to ${link.computer.name}…")
                 }
             }
-            if (terminal != null && Store.extraKeys(context)) {
+            if (!showMonitor && terminal != null && Store.extraKeys(context)) {
                 ExtraKeys({ termView }, mods,
                     onPaste = {
                         val clip = context.getSystemService(ClipboardManager::class.java).primaryClip

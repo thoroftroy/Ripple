@@ -1,5 +1,6 @@
 //! The Ripple daemon that runs on the computer: owns terminal sessions, serves the local desktop
 //! app over a Unix socket and paired phones over QUIC.
+pub mod monitor;
 
 pub mod files;
 pub mod reach;
@@ -122,6 +123,7 @@ pub struct Daemon {
     pub cfg: RwLock<Config>,
     pub devices: Mutex<Vec<Device>>,
     pub sessions: Mutex<BTreeMap<u32, Arc<Session>>>,
+    pub monitors: monitor::Monitors,
     next_id: AtomicU32,
     pub events: broadcast::Sender<Value>,
     pub codes: Mutex<Vec<(String, u64)>>,
@@ -152,6 +154,7 @@ impl Daemon {
             cfg: RwLock::new(cfg),
             devices: Mutex::new(devices),
             sessions: Mutex::new(BTreeMap::new()),
+            monitors: monitor::Monitors::default(),
             next_id: AtomicU32::new(1),
             events,
             codes: Mutex::new(vec![]),

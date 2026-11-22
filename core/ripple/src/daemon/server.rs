@@ -107,6 +107,9 @@ where
         "clip_list" => json!({"clips": d.clips.lock().unwrap().clone(), "enabled": d.cfg.read().unwrap().clipboard_sync}),
         "clip_clear" => { d.clips.lock().unwrap().clear(); json!({"ok": true}) }
         "sessions" => json!({"sessions": d.list_sessions()}),
+        "monitor_list" => d.monitors.list(),
+        "monitor_start" => super::monitor::Monitors::start(&d, &req),
+        "monitor_cancel" => d.monitors.cancel(req["id"].as_u64().unwrap_or(0)),
         "set_env" => {
             const KEEP: [&str; 10] = ["DISPLAY", "WAYLAND_DISPLAY", "XAUTHORITY", "DBUS_SESSION_BUS_ADDRESS", "SSH_AUTH_SOCK", "GPG_AGENT_INFO", "XDG_SESSION_TYPE", "XDG_CURRENT_DESKTOP", "LANG", "PATH"];
             let mut env = vec![];

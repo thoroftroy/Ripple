@@ -8,6 +8,7 @@ use serde_json::{Value, json};
 use std::num::NonZeroU16;
 use std::os::fd::{AsRawFd, OwnedFd};
 use std::os::unix::process::CommandExt;
+use std::os::unix::process::ExitStatusExt;
 use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex};
 use tokio::io::unix::AsyncFd;
@@ -185,8 +186,11 @@ impl Session {
                     Err(_would_block) => continue,
                 }
             }
-            let code = tokio::task::spawn_blocking(move || child.wait().ok().and_then(|s| s.code()).unwrap_or(0)).await.unwrap_or(0);
-            let _ = s2.ended.send(Some(code));
+            // A signal or a wait error is not a successful command.
+            let code = tokio::task::spawn_blocking(move || {
+                child.wait().map(|s| s.code().unwrap_or_else(|| 128 + s.signal().unwrap_or(0))).unwrap_or(-1)
+            }).await.unwrap_or(-1);
+            s2.ended.send_replace(Some(code));
         });
         Ok(sess)
     }

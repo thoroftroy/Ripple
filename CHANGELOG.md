@@ -1,5 +1,12 @@
 # Ripple changelog
 
+## v0.6.1
+
+- Monitor on the computer and phone shows computer usage and watches selected sessions. A monitor stays active on the computer when the phone disconnects
+- Watch Claude for a visible usage limit or an apparent finished response, or start a command and watch for a successful exit. Choose a notification, sleep, or a command to run. Sleep and commands have a 30 second cancellation countdown
+- Claude detection is based on the terminal screen and is not proof that a task succeeded. Automatic continuation is reported only when Claude shows it. Interactive OpenCode turn detection is not included
+- Monitors are not restored after the Ripple service restarts. The computer needs Ripple for Linux 0.1.25
+
 ## v0.6.0
 
 - Connecting to a computer is much faster: the direct path, the home network check and (away from home) the doorbell now all run at the same time instead of one after another, and when the computer answers the doorbell new attempts go out at once instead of waiting for old ones to retry. At home it connects almost instantly; away from home it usually takes a few seconds instead of 10 to 20
