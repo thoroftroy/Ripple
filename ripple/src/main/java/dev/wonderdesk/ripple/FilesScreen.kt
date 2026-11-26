@@ -14,6 +14,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Text
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.draw.clip
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
@@ -55,6 +60,22 @@ fun FilesScreen(fp: String, startPath: String, onBack: () -> Unit) {
 
     fun child(e: RemoteEntry) = path.trimEnd('/') + "/" + e.name
 
+    // Where you have been, like a browser: Back returns to the previous folder (at the same place in the list), not just its parent.
+    var history by rememberSaveable { mutableStateOf(listOf<String>()) }
+    val scrollAt = remember { mutableMapOf<String, Int>() }
+    var restoreTo by remember { mutableIntStateOf(0) }
+    fun go(to: String) {
+        if (to == path) return
+        scrollAt[path] = listState.firstVisibleItemIndex
+        history = (history + path).takeLast(50); restoreTo = 0; path = to
+    }
+    fun back(): Boolean {
+        val prev = history.lastOrNull() ?: return false
+        history = history.dropLast(1); restoreTo = scrollAt[prev] ?: 0; path = prev
+        return true
+    }
+    fun parentOf(p: String) = p.trimEnd('/').substringBeforeLast('/').ifBlank { "/" }
+
     LaunchedEffect(path, reload, state is LinkState.Connected) {
         if (state !is LinkState.Connected) return@LaunchedEffect
         error = null
@@ -63,7 +84,7 @@ fun FilesScreen(fp: String, startPath: String, onBack: () -> Unit) {
             path = o.optString("path", path)
             val a = o.optJSONArray("entries")
             entries = (0 until (a?.length() ?: 0)).map { i -> a!!.getJSONObject(i).let { RemoteEntry(it.optString("name"), it.optBoolean("dir"), it.optLong("size"), it.optLong("mtime"), it.optBoolean("hidden")) } }
-            listState.scrollToItem(0)
+            listState.scrollToItem(restoreTo.coerceAtMost((entries?.size ?: 1) - 1).coerceAtLeast(0)); restoreTo = 0
         }.onFailure { error = it.message; entries = emptyList() }
     }
 
@@ -115,14 +136,16 @@ fun FilesScreen(fp: String, startPath: String, onBack: () -> Unit) {
         }
     }
 
-    BackHandlerCompat(enabled = path != "/" && path != home) { path = path.trimEnd('/').substringBeforeLast('/').ifBlank { "/" } }
+    BackHandlerCompat(enabled = history.isNotEmpty()) { back() }
 
     WonderApp(
         appName = "Ripple", about = "Ripple",
         title = path.substringAfterLast('/').ifBlank { "/" },
         subtitle = "${link.computer.name} · ${path.replaceFirst(home, "~")}",
-        onBack = onBack,
+        // The arrow steps back through the folders you opened; from the first one it leaves Files.
+        onBack = { if (!back()) onBack() },
         actions = {
+            ToolbarButton(WonderIcons.ArrowUpward, "Up to the folder above", { go(parentOf(path)) }, enabled = path != "/")
             ToolbarButton(WonderIcons.UploadFile, "Send files here", { upload.launch(arrayOf("*/*")) }, enabled = state is LinkState.Connected)
             ToolbarButton(WonderIcons.CreateNewFolder, "New folder", { newFolder = true }, enabled = state is LinkState.Connected)
         },
@@ -134,13 +157,15 @@ fun FilesScreen(fp: String, startPath: String, onBack: () -> Unit) {
         Column(Modifier.fillMaxSize()) {
             // Places
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                Chip("Home", path == home, { path = home }, WonderIcons.Home)
-                if (link.computer.sharedDir.isNotBlank()) Chip("Ripple folder", path == link.computer.sharedDir, { path = link.computer.sharedDir }, WonderIcons.FolderOpen)
+                Chip("Home", path == home, { go(home) }, WonderIcons.Home)
+                if (link.computer.sharedDir.isNotBlank()) Chip("Ripple folder", path == link.computer.sharedDir, { go(link.computer.sharedDir) }, WonderIcons.FolderOpen)
                 link.sessions.value.map { it.cwd }.filter { it.isNotBlank() && it != home }.distinct().take(5).forEach { d ->
-                    Chip(d.substringAfterLast('/'), path == d, { path = d }, WonderIcons.Code)
+                    Chip(d.substringAfterLast('/'), path == d, { go(d) }, WonderIcons.Code)
                 }
-                Chip("/", path == "/", { path = "/" }, WonderIcons.Storage)
+                Chip("/", path == "/", { go("/") }, WonderIcons.Storage)
             }
+            // Where you are, one tap per folder: jump straight back up to any of them.
+            PathBar(path, home) { go(it) }
             busy?.let { LoadingStatus(it, Modifier.fillMaxWidth(), progress = busyProgress, detail = busyDetail, compact = true) }
             val list = entries
             when {
@@ -160,7 +185,7 @@ fun FilesScreen(fp: String, startPath: String, onBack: () -> Unit) {
                                     icon = iconFor(e), tint = if (e.dir) androidx.compose.ui.graphics.Color(0xFF3D8BFD) else androidx.compose.ui.graphics.Color(0xFF6B7078),
                                     chevron = e.dir,
                                     onLongClick = { menu = e },
-                                    onClick = { if (e.dir) path = child(e) else open(e, share = false) },
+                                    onClick = { if (e.dir) go(child(e)) else open(e, share = false) },
                                 )
                                 DropdownMenu(menu == e, { menu = null }) {
                                     if (!e.dir) {
@@ -198,6 +223,34 @@ fun FilesScreen(fp: String, startPath: String, onBack: () -> Unit) {
     if (newFolder) InputDialog("New folder", "Name", "", "Create", { newFolder = false }) { n ->
         newFolder = false
         work("Creating $n…") { withContext(Dispatchers.IO) { link.request(JSONObject().put("op", "mkdir").put("path", path.trimEnd('/') + "/" + n)) }; reload++ }
+    }
+}
+
+/** "~ › Projects › site": each folder in the path is a button. The last one (where you are) is highlighted. */
+@Composable
+private fun PathBar(path: String, home: String, onGo: (String) -> Unit) {
+    val p = wonderPalette()
+    val underHome = home.length > 1 && (path == home || path.startsWith(home.trimEnd('/') + "/"))
+    val parts = ArrayList<Pair<String, String>>()   // label to full path
+    if (underHome) {
+        parts += "~" to home
+        path.removePrefix(home.trimEnd('/')).trim('/').split('/').filter { it.isNotEmpty() }.fold(home.trimEnd('/')) { acc, n -> (acc + "/" + n).also { parts += n to it } }
+    } else {
+        parts += "/" to "/"
+        path.trim('/').split('/').filter { it.isNotEmpty() }.fold("") { acc, n -> ("$acc/$n").also { parts += n to it } }
+    }
+    val scroll = rememberScrollState()
+    LaunchedEffect(path) { scroll.animateScrollTo(scroll.maxValue) }
+    Row(Modifier.fillMaxWidth().horizontalScroll(scroll).padding(horizontal = 12.dp).padding(bottom = 6.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+        parts.forEachIndexed { i, (label, full) ->
+            val last = i == parts.lastIndex
+            Text(label, Modifier.clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+                .background(if (last) p.accent.copy(alpha = .16f) else androidx.compose.ui.graphics.Color.Transparent)
+                .clickable(enabled = !last) { onGo(full) }.padding(horizontal = 8.dp, vertical = 5.dp),
+                color = if (last) p.accent else p.text, style = MaterialTheme.typography.labelLarge,
+                fontWeight = if (last) androidx.compose.ui.text.font.FontWeight.SemiBold else null, maxLines = 1)
+            if (!last) Icon(WonderIcons.ChevronRight, null, Modifier.size(16.dp), tint = p.secondaryText)
+        }
     }
 }
 

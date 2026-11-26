@@ -118,3 +118,51 @@ async fn foreground_program_named_through_the_shell() {
     assert_eq!(s.foreground().0, "sleep");
     s.kill();
 }
+
+fn spawn_with_events(cmd: &str) -> (std::sync::Arc<Session>, tokio::sync::broadcast::Receiver<serde_json::Value>) {
+    let (tx, rx) = tokio::sync::broadcast::channel(16);
+    let s = Session::spawn(
+        9500 + std::process::id() % 400,
+        Spawn { name: "q".into(), cwd: None, command: Some(cmd.into()), shell: "/bin/sh".into(), cols: 80, rows: 24, env: vec![] },
+        tx,
+    )
+    .unwrap();
+    (s, rx)
+}
+
+fn quiet_alerts(rx: &mut tokio::sync::broadcast::Receiver<serde_json::Value>) -> usize {
+    let mut n = 0;
+    while let Ok(v) = rx.try_recv() {
+        if v["event"] == "attention" && v["kind"] == "quiet" {
+            n += 1;
+        }
+    }
+    n
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn redraws_after_resizes_are_not_a_finished_job() {
+    // A prompt that redraws whenever the window changes size, and does nothing else (an idle terminal on a phone whose keyboard slides up and down).
+    let (s, mut rx) = spawn_with_events("trap 'printf \"\\r$ prompt redrawn\"' WINCH; while :; do sleep 0.2; done");
+    // Sitting idle first, as a terminal left open does.
+    tokio::time::sleep(Duration::from_millis(4500)).await;
+    for i in 0..10 {
+        s.resize(80 + (i % 2) as u16 * 10, 24);
+        tokio::time::sleep(Duration::from_millis(1000)).await;
+        s.check_quiet(3);
+    }
+    tokio::time::sleep(Duration::from_millis(3500)).await;
+    s.check_quiet(3);
+    assert_eq!(quiet_alerts(&mut rx), 0, "screen: {}", s.peek());
+    s.kill();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_long_job_going_quiet_is_reported_once() {
+    let (s, mut rx) = spawn_with_events("sleep 3.5; i=0; while [ $i -lt 10 ]; do echo working $i; i=$((i+1)); sleep 1; done; sleep 60");
+    tokio::time::sleep(Duration::from_millis(17_500)).await;
+    s.check_quiet(3);
+    s.check_quiet(3);
+    assert_eq!(quiet_alerts(&mut rx), 1, "screen: {}", s.peek());
+    s.kill();
+}

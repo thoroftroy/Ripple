@@ -53,6 +53,12 @@ struct Inner {
     busy_since: Option<std::time::Instant>,
     quiet_reported: bool,
     last_attention: Option<std::time::Instant>,
+    /// Last output that was the program working on its own (not echoing typing or redrawing after a resize).
+    last_work: std::time::Instant,
+    /// Output until this moment is a reaction to typing or a resize, so it is not "work".
+    reactive_until: std::time::Instant,
+    /// A command was entered (or the session was started with one) since the last "finished" alert.
+    entered: bool,
 }
 
 pub struct Session {
@@ -140,6 +146,7 @@ impl Session {
         let master = Arc::new(AsyncFd::new(pty.master)?);
         let (tx, _) = broadcast::channel(2048);
         let (ended, _) = watch::channel(None);
+        let has_command = s.command.is_some();
         let sess = Arc::new(Session {
             owner: std::sync::atomic::AtomicU64::new(0),
             id,
@@ -157,6 +164,10 @@ impl Session {
                 busy_since: None,
                 quiet_reported: true,
                 last_attention: None,
+                last_work: std::time::Instant::now(),
+                // The shell's own start-up output is not work either.
+                reactive_until: std::time::Instant::now() + std::time::Duration::from_secs(3),
+                entered: has_command,
             }),
             write_lock: tokio::sync::Mutex::new(()),
             tx,
@@ -204,8 +215,12 @@ impl Session {
             let mut inner = self.inner.lock().unwrap();
             inner.parser.process(data);
             let now = std::time::Instant::now();
-            if now.duration_since(inner.last_output).as_secs() >= 3 {
-                inner.busy_since = Some(now);
+            // Echoed typing and the redraw after a resize are not the program working: they never start or extend a busy stretch.
+            if now >= inner.reactive_until {
+                if now.duration_since(inner.last_work).as_secs() >= 3 {
+                    inner.busy_since = Some(now);
+                }
+                inner.last_work = now;
             }
             inner.last_output = now;
             inner.quiet_reported = false;
@@ -279,10 +294,12 @@ impl Session {
             let mut inner = self.inner.lock().unwrap();
             let now = std::time::Instant::now();
             let quiet = now.duration_since(inner.last_output).as_secs() >= quiet_secs;
-            let worked = inner.busy_since.map(|b| inner.last_output.duration_since(b).as_secs() >= 8).unwrap_or(false);
-            if quiet && worked && !inner.quiet_reported {
+            let worked = inner.busy_since.map(|b| inner.last_work.duration_since(b).as_secs() >= 8).unwrap_or(false);
+            // Only after something was actually run: an idle shell that redrew its prompt a few times is not "finished".
+            if quiet && worked && inner.entered && !inner.quiet_reported {
                 inner.quiet_reported = true;
                 inner.busy_since = None;
+                inner.entered = false;
                 true
             } else {
                 false
@@ -336,6 +353,13 @@ impl Session {
     }
 
     pub async fn write(&self, data: &[u8]) -> Result<()> {
+        {
+            let mut inner = self.inner.lock().unwrap();
+            inner.reactive_until = std::time::Instant::now() + std::time::Duration::from_millis(1500);
+            if data.contains(&b'\r') || data.contains(&b'\n') {
+                inner.entered = true;
+            }
+        }
         let _g = self.write_lock.lock().await;
         let mut off = 0;
         while off < data.len() {
@@ -365,6 +389,8 @@ impl Session {
             libc::ioctl(self.master.get_ref().as_raw_fd(), libc::TIOCSWINSZ, &ws);
         }
         inner.parser.set_size(nz(rows), nz(cols));
+        // Full-screen programs and fancy prompts redraw for a moment after a resize.
+        inner.reactive_until = std::time::Instant::now() + std::time::Duration::from_millis(2000);
         inner.cols = cols;
         inner.rows = rows;
     }
