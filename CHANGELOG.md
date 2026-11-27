@@ -2,6 +2,7 @@
 
 ## v0.7.0
 
+- Ripple for Linux 0.1.28: terminal windows come back after the computer restarts even when the shutdown stops their programs before Ripple (before, a window could vanish from the list and not return). Windows you close yourself, or whose program finishes normally, still stay closed
 - Output arriving from the computer sends rings through the background; offline or asleep, the water goes still
 - The background answers your finger: a tap sends rings out and pops what it lands on, and dragging or scrolling leaves a wake and stirs the scene. Saving, adding, deleting and finishing things send a wave of colour through it, and an error gives a red shudder
 - The Monitor tab is redesigned: three clear numbered steps, Claude sessions are picked for you, big choice tiles for what to do when a session finishes, and a Watching now list with each session's state
