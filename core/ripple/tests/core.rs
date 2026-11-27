@@ -47,7 +47,7 @@ async fn protocol_frames_round_trip() {
 
 #[tokio::test]
 async fn ranged_download_uses_small_frames_without_losing_bytes() {
-    let path = std::path::PathBuf::from(format!("/tmp/opencode/ripple-frame-test-{}", std::process::id()));
+    let path = std::env::temp_dir().join(format!("ripple-frame-test-{}", std::process::id()));
     let input: Vec<u8> = (0..200_000).map(|n| (n % 251) as u8).collect();
     std::fs::write(&path, &input).unwrap();
     let (mut client, server) = tokio::io::duplex(512 * 1024);

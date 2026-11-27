@@ -269,6 +269,8 @@ fun RemoteScreen(fp: String, startSession: Int, open: (Screen) -> Unit) {
         LinkState.Idle -> SceneMood()
     })
     LaunchedEffect(connected) { if (connected) WonderMood.celebrate(listOf(">", "_", "✓", "✦")) }
+    // Offline or asleep, no rings spread at all: the water is still until the computer is back.
+    SideEffect { SceneFeed.state = if (state is LinkState.Offline) "offline" else "" }
 
     WonderApp(
         appName = "Ripple",

@@ -137,7 +137,18 @@ pub struct Daemon {
     /// Recently copied text, newest first, shared between the computer and phones.
     pub clips: Mutex<Vec<Value>>,
     pub shutting_down: std::sync::atomic::AtomicBool,
+    /// The last saved description of each open session (its folder is still known while its program runs).
+    pub last_saved: Mutex<HashMap<u32, Value>>,
+    /// Sessions whose program just stopped without being closed: kept in sessions.json for a while, because when the computer shuts
+    /// down the programs in the sessions are stopped before Ripple is, and they must still come back after the restart.
+    pub lately_ended: Mutex<Vec<(Value, std::time::Instant)>>,
+    /// Sessions closed on purpose, so they are not kept for restoring.
+    pub closed_by_user: Mutex<std::collections::HashSet<u32>>,
 }
+
+/// How long a session whose program was stopped stays in sessions.json. A shutdown stops the programs first and Ripple a little
+/// later; a minute covers even a slow shutdown, and a session that really ended drops out by itself.
+pub const LATELY_ENDED_SECS: u64 = 60;
 
 impl Daemon {
     pub fn load() -> Result<Arc<Daemon>> {
@@ -166,6 +177,9 @@ impl Daemon {
             session_env: Mutex::new(vec![]),
             clips: Mutex::new(vec![]),
             shutting_down: std::sync::atomic::AtomicBool::new(false),
+            last_saved: Mutex::new(HashMap::new()),
+            lately_ended: Mutex::new(vec![]),
+            closed_by_user: Mutex::new(std::collections::HashSet::new()),
         });
         d.save_config()?;
         Ok(d)
@@ -240,6 +254,12 @@ impl Daemon {
             }
             let code = *ended.borrow();
             me.sessions.lock().unwrap().remove(&id);
+            // Stopped by a signal or an error (as at shutdown), not closed with "exit": remember it for a little while.
+            if let Some(entry) = me.last_saved.lock().unwrap().remove(&id) {
+                if code != Some(0) && !me.closed_by_user.lock().unwrap().remove(&id) {
+                    me.lately_ended.lock().unwrap().push((entry, std::time::Instant::now()));
+                }
+            }
             let _ = me.events.send(json!({"event": "ended", "session": id, "code": code}));
             me.sessions_changed();
         });
@@ -261,20 +281,39 @@ impl Daemon {
     }
 
     /// Remembers which sessions are open so they can start again after a restart or reboot.
+    /// Sessions whose program was stopped in the last [LATELY_ENDED_SECS] seconds (not closed on purpose) are kept too.
     pub fn save_sessions(&self) {
         if self.shutting_down.load(Ordering::SeqCst) {
             return;
         }
-        let list: Vec<Value> = self.sessions.lock().unwrap().values().map(|s| {
+        let live: Vec<(u32, Value)> = self.sessions.lock().unwrap().iter().map(|(id, s)| {
             let sum = s.summary();
-            json!({"name": s.name.lock().unwrap().clone(), "cwd": sum["cwd"], "command": s.command, "cols": sum["cols"], "rows": sum["rows"]})
+            (*id, json!({"name": s.name.lock().unwrap().clone(), "cwd": sum["cwd"], "command": s.command, "cols": sum["cols"], "rows": sum["rows"]}))
         }).collect();
+        {
+            let mut saved = self.last_saved.lock().unwrap();
+            saved.retain(|id, _| live.iter().any(|(l, _)| l == id));
+            for (id, v) in &live {
+                // Keep the last known folder if the program has just gone and it can no longer be read.
+                let keep_cwd = v["cwd"].is_null() && saved.get(id).map(|o| !o["cwd"].is_null()).unwrap_or(false);
+                if keep_cwd { let mut v2 = v.clone(); v2["cwd"] = saved[id]["cwd"].clone(); saved.insert(*id, v2); } else { saved.insert(*id, v.clone()); }
+            }
+        }
+        let mut list: Vec<Value> = { let saved = self.last_saved.lock().unwrap(); live.iter().map(|(id, v)| saved.get(id).cloned().unwrap_or_else(|| v.clone())).collect() };
+        {
+            let mut lately = self.lately_ended.lock().unwrap();
+            lately.retain(|(_, at)| at.elapsed() < std::time::Duration::from_secs(LATELY_ENDED_SECS));
+            list.extend(lately.iter().map(|(v, _)| v.clone()));
+        }
         let path = config_dir().join("sessions.json");
         let text = serde_json::to_vec_pretty(&list).unwrap_or_default();
         if std::fs::read(&path).ok().as_deref() != Some(&text) {
             let _ = crate::identity::write_private(&path, &text);
         }
     }
+
+    /// A session closed on purpose (from the phone or the computer): it is not brought back after a restart.
+    pub fn mark_closed(&self, id: u32) { self.closed_by_user.lock().unwrap().insert(id); }
 
     pub fn restore_sessions(self: &Arc<Self>) {
         if !self.cfg.read().unwrap().restore_sessions {

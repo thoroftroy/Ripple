@@ -147,6 +147,7 @@ where
         }
         "kill" => match d.session(req["id"].as_u64().unwrap_or(0) as u32) {
             Some(s) => {
+                d.mark_closed(s.id);
                 s.kill();
                 json!({"ok": true})
             }

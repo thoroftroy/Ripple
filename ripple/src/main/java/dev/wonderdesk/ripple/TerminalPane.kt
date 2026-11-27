@@ -194,6 +194,8 @@ fun TerminalPane(
 /** Client used by every terminal screen: clipboard, bell and redraws. */
 class ScreenClient(private val context: Context, private val viewProvider: () -> TerminalView?) : TerminalSessionClient {
     override fun onTextChanged(changedSession: TerminalSession) {
+        // Output arriving from the computer sends a ring through Ripple's scene.
+        dev.wonderdesk.shared.SceneFeed.beat()
         val v = viewProvider() ?: return
         if (v.currentSession === changedSession) v.onScreenUpdated()
     }

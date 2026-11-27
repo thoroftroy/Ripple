@@ -1,5 +1,17 @@
 # Ripple changelog
 
+## v0.7.0
+
+- Output arriving from the computer sends rings through the background; offline or asleep, the water goes still
+- The background answers your finger: a tap sends rings out and pops what it lands on, and dragging or scrolling leaves a wake and stirs the scene. Saving, adding, deleting and finishing things send a wave of colour through it, and an error gives a red shudder
+- The Monitor tab is redesigned: three clear numbered steps, Claude sessions are picked for you, big choice tiles for what to do when a session finishes, and a Watching now list with each session's state
+- Files has a real Back: the arrow and the back gesture return to the folder you were in before (at the same place in the list), an Up button goes to the folder above, and a path bar lets you jump to any folder along the way
+- No more "finished" alerts for terminals that never ran anything: typing, resizing and a shell redrawing its prompt no longer count as work (needs Ripple for Linux 0.1.28)
+- The animated background now has a picture of its own behind everything: rings spreading like ripples on water. It is faint, so text stays easy to read
+- Aqua changes far more through the day: a rose dawn, gold sunrise, turquoise morning, deep azure noon, warm afternoon, orange sunset, violet dusk and a real dark night with the moon shimmering through the water and glowing plankton. Now and then a cloud passes over and the light dims
+- Super's space changes with the time of day too: a dark night with brighter stars, a rose dawn, teal morning, cobalt noon and a red and amber sunset
+- Opening the app no longer sprays a burst of fast symbols across the background; celebrations are a gentle lift of a few symbols, and only for something you just did
+
 ## v0.6.3
 
 - Monitor safety fix: a usage limit message left in the visible conversation is treated as an unconfirmed limit rather than a finished response, even if the live countdown is missing
