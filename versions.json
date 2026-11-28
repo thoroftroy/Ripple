@@ -30,7 +30,7 @@
     "checkup": "0.2.0",
     "fetch": "0.2.0",
     "launcher": "0.11.1",
-    "ripple": "0.7.2",
+    "ripple": "0.7.3",
     "echo": "0.3.1"
   },
   "tools": {

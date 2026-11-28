@@ -1,5 +1,9 @@
 # Ripple changelog
 
+## v0.7.3
+
+- Wake sends its wake-up call three times, a moment apart, instead of once. A computer asleep on Wi-Fi only listens now and then, so a single call was easy to miss. (Your computer's Wi-Fi card is set to wake on these calls; waking works best when the computer is asleep, not shut down)
+
 ## v0.7.2
 
 - Photos and videos you download from your computer now show up in Memories and other gallery apps straight away. Before, Android sometimes didn't know what kind of file they were, so only file managers like Wayfinder could see them

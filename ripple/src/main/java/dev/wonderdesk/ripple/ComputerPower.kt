@@ -181,12 +181,17 @@ object Wake {
         runCatching {
             DatagramSocket().use { s ->
                 s.broadcast = true
-                for (mac in macs) {
-                    val hw = mac.split(':').mapNotNull { it.toIntOrNull(16)?.toByte() }
-                    if (hw.size != 6) continue
-                    val payload = ByteArray(6) { 0xFF.toByte() } + (1..16).flatMap { hw }.toByteArray()
-                    for (t in targets) for (port in intArrayOf(9, 7)) {
-                        runCatching { s.send(DatagramPacket(payload, payload.size, InetAddress.getByName(t), port)); sent++ }
+                // Three rounds a little apart: a sleeping Wi-Fi card only listens now and then (and the router may hold
+                // packets for it until then), so one burst is easy to miss. Wired cards simply get it three times.
+                repeat(3) { round ->
+                    if (round > 0) Thread.sleep(700)
+                    for (mac in macs) {
+                        val hw = mac.split(':').mapNotNull { it.toIntOrNull(16)?.toByte() }
+                        if (hw.size != 6) continue
+                        val payload = ByteArray(6) { 0xFF.toByte() } + (1..16).flatMap { hw }.toByteArray()
+                        for (t in targets) for (port in intArrayOf(9, 7)) {
+                            runCatching { s.send(DatagramPacket(payload, payload.size, InetAddress.getByName(t), port)); if (round == 0) sent++ }
+                        }
                     }
                 }
             }
