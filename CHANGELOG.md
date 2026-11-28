@@ -1,5 +1,9 @@
 # Ripple changelog
 
+## v0.7.2
+
+- Photos and videos you download from your computer now show up in Memories and other gallery apps straight away. Before, Android sometimes didn't know what kind of file they were, so only file managers like Wayfinder could see them
+
 ## v0.7.1
 
 - Much lighter on the battery in the background. Terminal tabs stop streaming as soon as you leave Ripple (a busy program such as Claude redraws many times a second, and the phone was receiving every frame with nobody looking); they catch up with what they missed when you come back. Alerts and the session list still arrive

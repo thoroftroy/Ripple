@@ -13,7 +13,7 @@
     "chronicle": "0.7.1",
     "timepiece": "0.7.1",
     "safekeeper": "0.7.1",
-    "beacon": "0.7.1",
+    "beacon": "0.7.2",
     "vault": "0.8.1",
     "control-room": "0.8.1",
     "connections": "0.2.0",
@@ -30,7 +30,7 @@
     "checkup": "0.2.0",
     "fetch": "0.2.0",
     "launcher": "0.11.1",
-    "ripple": "0.7.1",
+    "ripple": "0.7.2",
     "echo": "0.3.1"
   },
   "tools": {

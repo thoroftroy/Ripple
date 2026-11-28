@@ -74,6 +74,8 @@ object Transfers {
             val values = ContentValues().apply {
                 put(MediaStore.Downloads.DISPLAY_NAME, name)
                 put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/Ripple")
+                // Say what kind of file it is, so photos and videos show up in Memories and other galleries straight away.
+                android.webkit.MimeTypeMap.getSingleton().getMimeTypeFromExtension(name.substringAfterLast('.', "").lowercase())?.let { put(MediaStore.Downloads.MIME_TYPE, it) }
                 put(MediaStore.Downloads.IS_PENDING, 1)
             }
             val uri = c.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values) ?: throw RuntimeException("Couldn't create the file")
