@@ -64,6 +64,21 @@ object Ripple {
         links.remove(fp)?.stop()
     }
 
+    /**
+     * True while Ripple is on screen. In the background only the small events channel stays open (alerts, the session list):
+     * terminal tabs stop streaming, because a busy program redraws many times a second and would keep the radio awake for nothing.
+     */
+    @Volatile var onScreen = false
+        private set
+
+    fun setOnScreen(v: Boolean) {
+        onScreen = v
+        synchronized(this) { links.values.toList() }.forEach { if (v) { it.resumeTerminals(); it.retrySoon() } else it.pauseTerminals() }
+    }
+
+    /** The screen came on: computers that could not be reached try again now instead of at their next (slow) retry. */
+    fun retryWaiting() { synchronized(this) { links.values.toList() }.forEach { it.retrySoon() } }
+
     /** The phone switched networks: drop paths that can't follow and reconnect at once. */
     fun networkChanged() {
         synchronized(this) { links.values.toList() }.forEach { it.reconnectNow() }
@@ -123,6 +138,9 @@ class Link(var computer: Computer) {
         } else wake.trySend(Unit)
     }
 
+    /** Cuts a retry wait short. Leaves a live connection alone. */
+    fun retrySoon() { if (wanted && handle == 0L) wake.trySend(Unit) }
+
     private suspend fun loop() {
         var attempt = 0
         while (scope.isActive && wanted) {
@@ -131,7 +149,10 @@ class Link(var computer: Computer) {
             val h = try {
                 Native.connect(computer.json.toString()) { s -> state.value = LinkState.Connecting(s, attempt) }
             } catch (e: RuntimeException) {
-                val wait = minOf(30, 2 shl minOf(attempt, 4)).toLong()
+                // Each try searches the local network, punches through routers and rings the doorbell, so with the screen off
+                // (nobody waiting) it tries every five minutes instead of every half minute. A network change still retries at once.
+                val cap = if (screenOn()) 30 else 300
+                val wait = minOf(cap, 2 shl minOf(attempt, 8)).toLong()
                 state.value = LinkState.Offline(e.message ?: "Couldn't connect", System.currentTimeMillis() + wait * 1000)
                 kotlinx.coroutines.withTimeoutOrNull(wait * 1000) { wake.receive() }
                 continue
@@ -142,7 +163,7 @@ class Link(var computer: Computer) {
             state.value = LinkState.Connected(via)
             Store.setSeenAt(Ripple.app, computer.fp, System.currentTimeMillis()); Store.setSleptAt(Ripple.app, computer.fp, 0L)
             refreshInfo(h)
-            terminals.values.forEach { it.attach(h) }
+            if (Ripple.onScreen) Ripple.main.post { if (handle == h) terminals.values.forEach { it.attach(h) } }
             watch(h)
             handle = 0
             Store.setSeenAt(Ripple.app, computer.fp, System.currentTimeMillis())
@@ -214,6 +235,12 @@ class Link(var computer: Computer) {
     fun closeTerminal(id: Int) {
         terminals.remove(id)?.detachStream()
     }
+
+    /** Ripple left the screen: stop every terminal stream (they pick up where they were when it comes back). Main thread. */
+    fun pauseTerminals() { terminals.values.forEach { it.detachStream() } }
+
+    /** Ripple is back on screen: reattach the terminals, with the history they missed. Main thread. */
+    fun resumeTerminals() { val h = handle; if (h != 0L) terminals.values.forEach { it.attach(h) } }
 }
 
 /** Forwards to whichever screen currently shows the terminal. */
@@ -309,6 +336,8 @@ class RemoteTerminal(val link: Link, val sessionId: Int, var name: String, val c
                 return@Thread
             }
             stream.set(s)
+            // Ripple left the screen while this was connecting: let it go again straight away.
+            if (!Ripple.onScreen) { detachStream(); return@Thread }
             connected = true
             postSend {
                 val (queued, stale) = synchronized(pending) {
@@ -338,9 +367,8 @@ class RemoteTerminal(val link: Link, val sessionId: Int, var name: String, val c
                     }
                 }
             }
-            stream.compareAndSet(s, 0)
-            connected = false
-            Ripple.main.post { onState?.invoke() }
+            // Only the current stream says it is gone: a stream let go when Ripple left the screen may finish after its replacement started.
+            if (stream.compareAndSet(s, 0)) { connected = false; Ripple.main.post { onState?.invoke() } }
         }, "ripple-term-$sessionId").apply { isDaemon = true; start() }
     }
 
@@ -384,3 +412,6 @@ object Presence {
         return if (slept > 0 && now - slept < 24 * 3600_000L) "Asleep since ${clock(slept)}" else if (seen > 0) "Not reachable · last seen ${ago(now - seen)}" else "Not reachable"
     }
 }
+
+/** True while the phone's screen is on. */
+fun screenOn(): Boolean = runCatching { Ripple.app.getSystemService(android.os.PowerManager::class.java).isInteractive }.getOrDefault(true)

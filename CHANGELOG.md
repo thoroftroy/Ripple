@@ -1,5 +1,16 @@
 # Ripple changelog
 
+## v0.7.1
+
+- Much lighter on the battery in the background. Terminal tabs stop streaming as soon as you leave Ripple (a busy program such as Claude redraws many times a second, and the phone was receiving every frame with nobody looking); they catch up with what they missed when you come back. Alerts and the session list still arrive
+- With the screen off, Ripple no longer asks the computer for its processor and memory use every 15 seconds, and shared notepads sync when the screen comes back on instead of every half minute
+- When a computer can't be reached and the screen is off, Ripple tries again every five minutes instead of every half minute. Turning the screen on, opening Ripple or changing networks still retries straight away
+- The Monitor tab and the Notepads screen stop checking with the computer when you leave Ripple. Before, if you left Ripple on the Monitor tab, it kept asking every few seconds all day
+- The floating button's computer card is only updated while the screen is on, and catches up the moment it comes on
+- The connection to your computer sends a keep-alive every 25 seconds instead of every 12, so the phone's radio can rest between them (Ripple for Linux 0.1.29 does the same from the computer's side)
+- The moving background holds still while Battery Saver is on, so it uses next to no power then. It still changes with what the app is doing
+- Ripple for Linux 0.1.29: the keep-alive change above. Windows still survive a restart as in 0.1.28
+
 ## v0.7.0
 
 - Ripple for Linux 0.1.28: terminal windows come back after the computer restarts even when the shutdown stops their programs before Ripple (before, a window could vanish from the list and not return). Windows you close yourself, or whose program finishes normally, still stay closed

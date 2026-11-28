@@ -80,9 +80,12 @@ impl ServerCertVerifier for PinnedServer {
 
 pub fn transport() -> Arc<quinn::TransportConfig> {
     let mut t = quinn::TransportConfig::default();
-    // Keeps home-router and phone-network firewalls from forgetting the path while idle.
-    t.keep_alive_interval(Some(Duration::from_secs(12)));
-    t.max_idle_timeout(Some(Duration::from_secs(40).try_into().unwrap()));
+    // Keeps home-router and phone-network firewalls from forgetting the path while idle. 25 seconds is the interval
+    // WireGuard uses for the same job: short enough for strict carrier NAT, long enough that a phone's radio gets to rest
+    // between pings (every 12 seconds kept it awake almost all the time). Lost pings are resent within a second or so,
+    // and the idle limit leaves room for two of them.
+    t.keep_alive_interval(Some(Duration::from_secs(25)));
+    t.max_idle_timeout(Some(Duration::from_secs(60).try_into().unwrap()));
     // Handshake packets that get lost (a firewall not yet opened by the doorbell) are resent sooner than the 333 ms default suggests.
     t.initial_rtt(Duration::from_millis(120));
     t.max_concurrent_bidi_streams(256u32.into());

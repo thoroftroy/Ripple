@@ -40,6 +40,8 @@ object RippleAssist {
     fun refresh(c: Context = Ripple.app) {
         val now = System.currentTimeMillis()
         if (now - lastRefresh < 400) return
+        // Nobody sees the card with the screen off; it is brought up to date when the screen comes on.
+        if (!screenOn()) return
         lastRefresh = now
         runCatching {
             Store.computers(c).forEach { comp -> card(c, comp) }
@@ -73,6 +75,8 @@ object RippleAssist {
         poller = Thread {
             while (true) {
                 try { Thread.sleep(15_000) } catch (_: InterruptedException) { return@Thread }
+                // With the screen off nobody sees the card, and a request every 15 seconds would keep the radio from resting.
+                if (!screenOn()) continue
                 val live = Ripple.active().filter { it.state.value is LinkState.Connected }
                 if (live.isEmpty() && Store.computers(c).isEmpty()) continue
                 live.forEach { l -> runCatching { usage[l.computer.fp] = Usage.from(l.request(JSONObject().put("op", "stats"))) } }

@@ -102,12 +102,14 @@ class MainActivity : WonderActivity() {
 
     override fun onStart() {
         super.onStart()
+        Ripple.setOnScreen(true)
         RippleService.stop(this)
     }
 
     override fun onStop() {
         super.onStop()
         visibleSession = null
+        Ripple.setOnScreen(false)
         // Keep connections in the background (alerts) if allowed; otherwise let them go.
         if (Ripple.active().isNotEmpty()) {
             if (Store.stayConnected(this)) RippleService.start(this)

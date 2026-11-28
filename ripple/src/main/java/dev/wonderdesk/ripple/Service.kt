@@ -110,6 +110,7 @@ class RippleService : Service() {
         }
         runCatching { Ripple.active().joinToString { it.computer.name }.ifBlank { null } }.getOrNull()?.let { goForeground(it) }
         watchNetwork()
+        watchScreen()
         startNoteSync()
         return START_STICKY
     }
@@ -120,7 +121,8 @@ class RippleService : Service() {
         if (noteSync?.isAlive == true) return
         noteSync = Thread {
             while (!Thread.currentThread().isInterrupted) {
-                runCatching { if (NoteLinks.all(this).isNotEmpty()) NoteLinks.syncAll(this) }
+                // Paused while the screen is off; it catches up within half a minute of the screen coming on.
+                runCatching { if (screenOn() && NoteLinks.all(this).isNotEmpty()) NoteLinks.syncAll(this) }
                 try { Thread.sleep(30_000) } catch (_: InterruptedException) { return@Thread }
             }
         }.also { it.isDaemon = true; it.start() }
@@ -140,7 +142,17 @@ class RippleService : Service() {
         callback = cb
     }
 
+    private var screen: BroadcastReceiver? = null
+    /** Screen on: retry unreachable computers now, so the floating button's card is right by the time you look. */
+    private fun watchScreen() {
+        if (screen != null) return
+        val r = object : BroadcastReceiver() { override fun onReceive(c: Context, i: Intent) { Ripple.retryWaiting(); RippleAssist.refresh() } }
+        runCatching { registerReceiver(r, android.content.IntentFilter(Intent.ACTION_SCREEN_ON)) }
+        screen = r
+    }
+
     override fun onDestroy() {
+        screen?.let { runCatching { unregisterReceiver(it) } }
         noteSync?.interrupt()
         callback?.let { runCatching { getSystemService(ConnectivityManager::class.java).unregisterNetworkCallback(it) } }
         super.onDestroy()

@@ -115,9 +115,10 @@ fun NotepadsScreen(fp: String, onBack: () -> Unit) {
     var removing by remember { mutableStateOf<NoteLink?>(null) }
     var status by remember { mutableStateOf<String?>(null) }
     val connected by (link?.state ?: kotlinx.coroutines.flow.MutableStateFlow<LinkState>(LinkState.Idle)).collectAsState()
-    // Sync now, then every 20 seconds while this screen is open.
-    LaunchedEffect(connected) {
-        while (connected is LinkState.Connected) {
+    // Sync now, then every 20 seconds while this screen is open and on screen.
+    val resumed = rememberIsResumed()
+    LaunchedEffect(connected, resumed) {
+        while (resumed && connected is LinkState.Connected) {
             val done = withContext(Dispatchers.IO) { NoteLinks.syncAll(context) }
             if (done.isNotEmpty()) status = done.last()
             ui++; delay(20_000)

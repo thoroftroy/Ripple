@@ -75,8 +75,10 @@ fun RippleMonitorPane(link: Link, sessions: List<SessionInfo>, connected: Boolea
             items = (0 until list.length()).mapNotNull { list.optJSONObject(it) }.sortedByDescending { it.optLong("created") }
         }
     }
-    LaunchedEffect(link, connected) {
-        if (!connected) return@LaunchedEffect
+    // Only while you can see it: a screen left open keeps running in the background otherwise, asking every few seconds.
+    val resumed = rememberIsResumed()
+    LaunchedEffect(link, connected, resumed) {
+        if (!connected || !resumed) return@LaunchedEffect
         while (isActive) {
             val r = withContext(Dispatchers.IO) { link.ask(JSONObject().put("op", "monitor_list")) }
             r.onSuccess { obj ->
